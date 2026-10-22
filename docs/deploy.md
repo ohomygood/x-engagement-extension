@@ -3,7 +3,7 @@
 | Part | URL | Host / plan |
 |---|---|---|
 | License server | https://xeng-license.onrender.com (health: `/health`) | Render free web service `xeng-license` (Node 20, Singapore), `srv-dbcpdifb9u1s73cf4rng`. Runs `worker/src/index.ts` via `server/node-server.mjs`. |
-| Public site + privacy policy (for the Chrome Web Store) | https://xeng-site.pages.dev · https://xeng-site.pages.dev/privacy | Cloudflare Pages project `xeng-site` (`python3 scripts/build_site.py` → `site/`) |
+| Public site + terms/refund policy + privacy policy | https://xeng-site.pages.dev · https://xeng-site.pages.dev/terms · https://xeng-site.pages.dev/privacy | Cloudflare Pages project `xeng-site` (`python3 scripts/build_site.py` → `site/`) |
 | Source | https://github.com/ohomygood/x-engagement-extension | public, all rights reserved |
 | Chrome Web Store | **not published** | |
 

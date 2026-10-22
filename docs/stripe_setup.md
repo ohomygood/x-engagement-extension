@@ -78,6 +78,21 @@ So the redirect and the webhook produce the same single key, whichever arrives f
 | single use | one deterministic key per session (`HMAC(signing key, session id)`); re-shown on every visit; a replay yields the same key |
 | refund | `GET /v1/charges?payment_intent=…` (needs **Charges: Read**; optional) — full refund → key revoked |
 
+## Refund policy
+
+**Full refund on request within 7 days of purchase, once per customer.** Contact: go_with_prob@mail.grokbot.com.
+Shown on https://xeng-site.pages.dev/terms (bilingual, linked from the site footer) and on every license-server `/paid` page
+(`REFUND_POLICY` in `worker/src/index.ts`; keep in sync with `TERMS` in `scripts/build_site.py`).
+
+Handling a request (owner):
+1. Check the purchase is within 7 days (Stripe Dashboard → Payments) and that this customer hasn't had a refund before
+   (we store no e-mail; check the Stripe customer e-mail / card against earlier refunds in the Dashboard).
+2. Refund the full amount in the Stripe Dashboard.
+3. The key is revoked automatically: the next `/paid` visit re-checks the charge immediately, and activation/renewal
+   re-checks at most every 24 h (Charges: Read); the optional `charge.refunded` webhook revokes at once.
+   To be sure, also run `node scripts/admin.mjs revoke … --reason refunded` (docs/manual_unlock.md) and add the session to `REVOKED_REFS`.
+4. Caveat: an already-activated install keeps Pro offline until its signed token expires (≤ 30 days); it can't renew.
+
 ## Restricted key permissions
 
 - **Checkout Sessions: Read** (required): `/paid`, the webhook re-check, and rebuilding keys after a store wipe (session list filtered by `payment_link`).

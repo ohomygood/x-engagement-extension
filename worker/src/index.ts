@@ -343,11 +343,20 @@ const PAY_MSG: Record<string, [string, string]> = {
   wrong_amount: ['付款金额与订单不符。', "The amount paid doesn't match the order."],
   revoked: ['这笔付款已退款，激活码已失效。', 'This payment was refunded and its key is no longer valid.'],
 };
+/** Refund policy (same text as the site's /terms page, scripts/build_site.py). */
+export const CONTACT = 'go_with_prob@mail.grokbot.com';
+export const REFUND_POLICY: [string, string] = [
+  `退款政策：购买后 7 天内可申请全额退款，每位客户限一次。请发邮件至 ${CONTACT}，附上激活码或 Stripe 收据；退款后激活码失效。`,
+  `Refund policy: full refund on request within 7 days of purchase, once per customer. Email ${CONTACT} with your key or Stripe receipt; the key is revoked once refunded.`,
+];
+const REFUND_HTML = `<p style="color:#445">${REFUND_POLICY[0]}<br>${REFUND_POLICY[1]}
+    <a href="https://xeng-site.pages.dev/terms">Terms / 条款</a></p>`;
 function page(inner: string, status: number): Response {
   return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <meta name="robots" content="noindex"><title>X Engagement List Pro</title>
     <body style="font-family:system-ui;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6">${inner}
-    <p style="color:#667">联系我们 / Contact: <a href="mailto:go_with_prob@mail.grokbot.com">go_with_prob@mail.grokbot.com</a></p></body>`,
+    ${REFUND_HTML}
+    <p style="color:#667">联系我们 / Contact: <a href="mailto:${CONTACT}">${CONTACT}</a></p></body>`,
     { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
 }
 
@@ -362,7 +371,7 @@ async function paid(url: URL, env: Env, fetchImpl: typeof fetch = fetch): Promis
     if (rec.status !== 'active' || await isRevokedByEnv(key, rec, env)) throw new PayError('revoked', 410);
     return page(`<h1>感谢购买 X 互动名单助手 Pro / Thanks for buying Pro</h1><p>你的激活码 / Your license key:</p>
        <p><code style="font-size:22px;user-select:all">${esc(key)}</code></p>
-       <p>打开扩展 → 设置 → 输入激活码。最多 3 台设备。7 天内可退款。<br>Open the extension → Settings → paste the key. Up to 3 devices. 7-day refund.</p>
+       <p>打开扩展 → 设置 → 输入激活码。最多 3 台设备。<br>Open the extension → Settings → paste the key. Up to 3 devices.</p>
        <p>请保存激活码，或收藏本页链接（随时可重新打开查看）；我们不保存你的邮箱。<br>Save this key, or bookmark this page (you can reopen it any time). We don't store your e-mail.</p>`, 200);
   } catch (e) {
     if (!(e instanceof PayError)) throw e;

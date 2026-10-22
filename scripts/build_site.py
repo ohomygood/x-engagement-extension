@@ -1,4 +1,4 @@
-"""Build the public site (bilingual landing page + privacy policy) into site/ for Cloudflare Pages.
+"""Build the public site (bilingual landing page + terms/refund policy + privacy policy) into site/ for Cloudflare Pages.
 
     python3 scripts/build_site.py            # then: wrangler pages deploy site --project-name xeng-site
 
@@ -14,6 +14,7 @@ BUY_ENABLED = False
 
 PAYMENT_LINK = "https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03"
 CONTACT = "go_with_prob@mail.grokbot.com"
+# Refund policy: keep in sync with REFUND_POLICY in worker/src/index.ts (license server /paid page)
 NOTIFY = f"mailto:{CONTACT}?subject=Notify%20me%3A%20X%20Engagement%20List&body=Please%20email%20me%20when%20the%20extension%20is%20in%20the%20Chrome%20Web%20Store."
 SHOTS = {"en": [("en-1-leaderboard.png", "Top commenters"), ("en-2-pending.png", "Replies you haven't answered"),
                 ("en-3-not-following-back.png", "Not following back")],
@@ -52,8 +53,8 @@ T = {
    how="How it works", how_p="The extension reads the X pages you open in your own browser and stores what it sees in your browser's local database. It doesn't use the X API, doesn't ask for your password, and never follows, unfollows, likes, replies or messages. The only network request it makes is the Pro license check.",
    plans="Free vs Pro", feat="Feature", free="Free", pro="Pro", rows=[("History window", "Last 7 days", "7 / 30 / 90 days"), ("Rows per list", "Top 20", "All rows"),
      ("CSV export", "—", "✓"), ("X accounts", "1", "Multiple"), ("Price", "$0", "$4.99 USD one-off, no subscription")],
-   price_note="Pro is paid by card through Stripe and charged in USD; Stripe checkout may show your local currency. After paying you get a license key to enter in the extension's Settings. For refunds or questions, email us.",
-   privacy="Privacy policy", contact="Contact", disclaimer="Not affiliated with or endorsed by X Corp. “X” is used only to describe the website the extension works with."),
+   price_note="Pro is paid by card through Stripe and charged in USD; Stripe checkout may show your local currency. After paying you get a license key to enter in the extension's Settings. Refunds: full refund on request within 7 days of purchase, once per customer (see Terms).",
+   privacy="Privacy policy", terms="Terms & refunds", contact="Contact", disclaimer="Not affiliated with or endorsed by X Corp. “X” is used only to describe the website the extension works with."),
  "zh": dict(title="X 互动名单助手 — 看清谁在和你互动",
    h1="看清谁在和你的 X 帖子互动，数据不离开你的浏览器。",
    lead="一个 Chrome 扩展：把你平时浏览的 X 页面整理成清单——评论最多的人、还没回复的评论、没有回关你的账号。所有数据只保存在你自己的浏览器里。",
@@ -66,9 +67,39 @@ T = {
    how="工作方式", how_p="扩展只读取你在自己浏览器里打开的 X 页面，并把看到的内容存进浏览器的本地数据库。不调用 X 的 API，不需要你的密码，也不会替你关注、取关、点赞、回复或私信。唯一的网络请求是 Pro 授权校验。",
    plans="免费版 vs Pro", feat="功能", free="免费版", pro="Pro", rows=[("历史范围", "近 7 天", "7 / 30 / 90 天"), ("每个清单行数", "前 20 行", "全部"),
      ("CSV 导出", "—", "✓"), ("X 账号数", "1 个", "多个"), ("价格", "$0", "$4.99 美元一次性，不订阅")],
-   price_note="Pro：$4.99 美元，通过 Stripe 用银行卡支付，按美元收费，结账页可能显示本地货币金额。付款后获得授权码，在扩展的「设置与授权」里输入即可。退款或其他问题请发邮件联系。",
-   privacy="隐私政策", contact="联系", disclaimer="本扩展与 X Corp. 无任何关联，也未获其认可。“X”仅用于说明扩展所适用的网站。"),
+   price_note="Pro：$4.99 美元，通过 Stripe 用银行卡支付，按美元收费，结账页可能显示本地货币金额。付款后获得授权码，在扩展的「设置与授权」里输入即可。退款：购买后 7 天内可申请全额退款，每位客户限一次（详见服务条款）。",
+   privacy="隐私政策", terms="服务条款与退款", contact="联系", disclaimer="本扩展与 X Corp. 无任何关联，也未获其认可。“X”仅用于说明扩展所适用的网站。"),
 }
+
+TERMS = {
+ "en": ("Terms of Service and Refund Policy", [
+   ("Product", "X Engagement List is a Chrome extension. The Free plan costs nothing. Pro is a $4.99 USD one-off purchase (no subscription), paid by card through Stripe; Stripe checkout may show your local currency."),
+   ("License", "After paying you get a license key for your own use on up to 3 devices. Don't share or resell it."),
+   ("Refund policy", "Full refund on request within 7 days of purchase, once per customer. To ask for one, email " + CONTACT + " with your license key or the Stripe receipt. The refund goes back to your original payment method through Stripe, and the license key is revoked."),
+   ("Your data", "The extension stores what it reads only in your browser. See the privacy policy."),
+   ("No warranty", "The extension is provided as is. It depends on how x.com pages look, and may stop working if X changes them."),
+   ("Not affiliated", "Not affiliated with or endorsed by X Corp."),
+   ("Contact", "Questions or refunds: " + CONTACT + ".")]),
+ "zh": ("服务条款与退款政策", [
+   ("产品", "X 互动名单助手是一个 Chrome 扩展。免费版不收费；Pro 为 $4.99 美元一次性购买（不订阅），通过 Stripe 用银行卡支付，结账页可能显示本地货币金额。"),
+   ("授权", "付款后你会获得一个激活码，供你本人在最多 3 台设备上使用，请勿分享或转售。"),
+   ("退款政策", "购买后 7 天内可申请全额退款，每位客户限一次。申请请发邮件至 " + CONTACT + "，附上激活码或 Stripe 收据。退款通过 Stripe 原路退回，激活码随之失效。"),
+   ("你的数据", "扩展读取的内容只保存在你的浏览器里，详见隐私政策。"),
+   ("免责声明", "扩展按现状提供。它依赖 x.com 的页面结构，X 改版后可能暂时无法使用。"),
+   ("无关联", "本扩展与 X Corp. 无任何关联，也未获其认可。"),
+   ("联系", "问题或退款：" + CONTACT + "。")]),
+}
+
+def terms_section(lang):
+    title, items = TERMS[lang]; e = html.escape
+    body = "".join(f"<h2>{e(h)}</h2><p>{e(p)}</p>" for h, p in items)
+    back = "← X 互动名单助手" if lang == "zh" else "← X Engagement List"
+    privacy = T[lang]["privacy"]
+    return f"""<div data-lang="{lang}"><p><a href="/">{e(back)}</a></p><h1>{e(title)}</h1>{body}
+<footer><p><a href="/privacy">{e(privacy)}</a> · <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(T[lang]['disclaimer'])}</p></footer></div>"""
+
+LANG_JS = """<script>(function(){var q=new URLSearchParams(location.search).get("lang");var zh=q?q==="zh":/^zh/i.test(navigator.language||"");
+document.documentElement.lang=zh?"zh-CN":"en";})();</script>"""
 
 def section(lang):
     t = T[lang]; e = html.escape
@@ -82,7 +113,7 @@ def section(lang):
 <h2>{e(t['how'])}</h2><p>{e(t['how_p'])}</p>
 <h2>{e(t['plans'])}</h2><table><tr><th>{e(t['feat'])}</th><th>{e(t['free'])}</th><th>{e(t['pro'])}</th></tr>{rows}</table>
 <p class="muted">{e(t['price_note'])}</p>
-<footer><p><a href="/privacy">{e(t['privacy'])}</a> · {e(t['contact'])}: <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(t['disclaimer'])}</p></footer></div>"""
+<footer><p><a href="/terms">{e(t['terms'])}</a> · <a href="/privacy">{e(t['privacy'])}</a> · {e(t['contact'])}: <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(t['disclaimer'])}</p></footer></div>"""
 
 index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>X Engagement List / X 互动名单助手</title><meta name="description" content="{html.escape(T['en']['lead'])}">
@@ -93,6 +124,14 @@ document.documentElement.lang=zh?"zh-CN":"en";}})();</script></head><body>
 <script>document.getElementById("lang").onclick=function(){{var h=document.documentElement;h.lang=h.lang==="en"?"zh-CN":"en";}};</script>
 </body></html>"""
 (out / "index.html").write_text(index, encoding="utf-8")
+
+terms_html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Terms &amp; Refund Policy — X Engagement List / 服务条款与退款政策</title><style>{CSS}</style>{LANG_JS}</head><body>
+<header><div class="brand">X Engagement List · X 互动名单助手</div><div class="lang"><button type="button" id="lang">中 / EN</button></div></header>
+<main>{terms_section('en')}{terms_section('zh')}</main>
+<script>document.getElementById("lang").onclick=function(){{var h=document.documentElement;h.lang=h.lang==="en"?"zh-CN":"en";}};</script>
+</body></html>"""
+(out / "terms.html").write_text(terms_html, encoding="utf-8")
 
 body = markdown.markdown((root / "store" / "privacy-policy.md").read_text(encoding="utf-8"))
 (out / "privacy.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
