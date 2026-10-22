@@ -46,6 +46,15 @@ describe('release check', () => {
     expect(bad).toContain('pay.jpg: is the real payment QR');
     expect(bad).toContain('wechat_pay_qr.jpg: QR/WeChat-like file name');
     expect(bad).toContain('x.js: WeChat/QR payment text');
+    // brand files pass only as byte-identical copies of brand/
+    const { copyFileSync } = await import('node:fs');
+    const ok = mkdtempSync(join(tmpdir(), 'brand-'));
+    mkdirSync(join(ok, 'brand'));
+    copyFileSync(join(__dirname, '../brand/aiseenlab_icon.svg'), join(ok, 'brand/aiseenlab_icon.svg'));
+    copyFileSync(join(__dirname, '../brand/favicon.ico'), join(ok, 'favicon.ico'));
+    expect(checkRelease(ok)).toEqual([]);
+    writeFileSync(join(ok, 'brand/aiseenlab_icon.png'), 'some other picture');
+    expect(checkRelease(ok).join('\n')).toContain('brand/aiseenlab_icon.png: unexpected image');
     delete process.env.XENG_REAL_QR_PATH;
   });
 });

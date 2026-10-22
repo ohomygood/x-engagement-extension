@@ -100,6 +100,20 @@ def terms_section(lang):
     return f"""<div data-lang="{lang}"><p><a href="/">{e(back)}</a></p><h1>{e(title)}</h1>{body}
 <footer><p><a href="/privacy">{e(privacy)}</a> · <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(T[lang]['disclaimer'])}</p></footer></div>"""
 
+# AI Seen Lab brand (favicon + small footer mark). Files are byte-for-byte copies of brand/ (check_release.mjs
+# allows no other image there).
+BRAND_FILES = ["aiseenlab_icon.svg", "aiseenlab_icon.png", "favicon-16.png", "favicon-32.png", "apple-touch-icon.png", "favicon.ico"]
+ICONS = ('<link rel="icon" href="/brand/aiseenlab_icon.svg" type="image/svg+xml"><link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">'
+         '<link rel="icon" href="/brand/favicon-16.png" sizes="16x16" type="image/png"><link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">')
+BYLINE = ('<div class="byline-row"><a class="byline" href="https://aiseenlab.com/"><img src="/brand/aiseenlab_icon.svg" alt="" width="16" height="16">'
+          '<span>by AI Seen Lab</span></a></div>')
+BYLINE_CSS = (".byline-row{max-width:980px;margin:0 auto;padding:0 20px 28px}.byline{display:inline-flex;align-items:center;gap:6px;"
+              "color:#536471;text-decoration:none;font-size:12px}.byline:hover{color:#1d9bf0}.byline img{width:16px;height:16px;display:block}")
+(out / "brand").mkdir(exist_ok=True)
+for f in BRAND_FILES:
+    shutil.copyfile(root / "brand" / f, out / "brand" / f)
+shutil.copyfile(root / "brand" / "favicon.ico", out / "favicon.ico")
+
 LANG_JS = """<script>(function(){var q=new URLSearchParams(location.search).get("lang");var zh=q?q==="zh":/^zh/i.test(navigator.language||"");
 document.documentElement.lang=zh?"zh-CN":"en";})();</script>"""
 
@@ -118,27 +132,27 @@ def section(lang):
 <footer><p><a href="/terms">{e(t['terms'])}</a> · <a href="/privacy">{e(t['privacy'])}</a> · {e(t['contact'])}: <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(t['disclaimer'])}</p></footer></div>"""
 
 index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>X Engagement List / X 互动名单助手</title><link rel="canonical" href="{SITE_URL}/"><meta name="description" content="{html.escape(T['en']['lead'])}">
-<style>{CSS}</style><script>(function(){{var q=new URLSearchParams(location.search).get("lang");var zh=q?q==="zh":/^zh/i.test(navigator.language||"");
+<title>X Engagement List / X 互动名单助手</title><link rel="canonical" href="{SITE_URL}/">{ICONS}<meta name="description" content="{html.escape(T['en']['lead'])}">
+<style>{CSS}{BYLINE_CSS}</style><script>(function(){{var q=new URLSearchParams(location.search).get("lang");var zh=q?q==="zh":/^zh/i.test(navigator.language||"");
 document.documentElement.lang=zh?"zh-CN":"en";}})();</script></head><body>
 <header><div class="brand">X Engagement List · X 互动名单助手</div><div class="lang"><button type="button" id="lang">中 / EN</button></div></header>
-<main>{section('en')}{section('zh')}</main>
+<main>{section('en')}{section('zh')}</main>{BYLINE}
 <script>document.getElementById("lang").onclick=function(){{var h=document.documentElement;h.lang=h.lang==="en"?"zh-CN":"en";}};</script>
 </body></html>"""
 (out / "index.html").write_text(index, encoding="utf-8")
 
 terms_html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Terms &amp; Refund Policy — X Engagement List / 服务条款与退款政策</title><link rel="canonical" href="{SITE_URL}/terms"><style>{CSS}</style>{LANG_JS}</head><body>
+<title>Terms &amp; Refund Policy — X Engagement List / 服务条款与退款政策</title><link rel="canonical" href="{SITE_URL}/terms">{ICONS}<style>{CSS}{BYLINE_CSS}</style>{LANG_JS}</head><body>
 <header><div class="brand">X Engagement List · X 互动名单助手</div><div class="lang"><button type="button" id="lang">中 / EN</button></div></header>
-<main>{terms_section('en')}{terms_section('zh')}</main>
+<main>{terms_section('en')}{terms_section('zh')}</main>{BYLINE}
 <script>document.getElementById("lang").onclick=function(){{var h=document.documentElement;h.lang=h.lang==="en"?"zh-CN":"en";}};</script>
 </body></html>"""
 (out / "terms.html").write_text(terms_html, encoding="utf-8")
 
 body = markdown.markdown((root / "store" / "privacy-policy.md").read_text(encoding="utf-8"))
 (out / "privacy.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Privacy Policy — X Engagement List</title><link rel="canonical" href="{SITE_URL}/privacy"><style>body{{font:16px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#0f1419}}h1{{font-size:24px}}a{{color:#1d9bf0}}</style></head>
-<body><p><a href="/">← X Engagement List</a></p>{body}</body></html>""", encoding="utf-8")
+<title>Privacy Policy — X Engagement List</title><link rel="canonical" href="{SITE_URL}/privacy">{ICONS}<style>body{{font:16px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#0f1419}}h1{{font-size:24px}}a{{color:#1d9bf0}}{BYLINE_CSS.replace("padding:0 20px 28px", "padding:18px 0 0")}</style></head>
+<body><p><a href="/">← X Engagement List</a></p>{body}{BYLINE}</body></html>""", encoding="utf-8")
 (out / "_headers").write_text("/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n", encoding="utf-8")
 # Pages advanced-mode worker: the old production pages.dev host 301-redirects to the custom domain (path + query kept);
 # preview hosts (<hash>.xeng-site.pages.dev) and the custom domain are served from the static assets.
