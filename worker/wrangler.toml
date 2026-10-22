@@ -1,0 +1,22 @@
+# PLACEHOLDER — not deployed. Needs Cloudflare account approval (via the owner).
+name = "xeng-license"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+routes = [{ pattern = "license.__XENG_DOMAIN__", custom_domain = true }]
+
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "__PENDING_KV_NAMESPACE_ID__"
+
+[vars]
+ALLOWED_ORIGINS = "chrome-extension://__PENDING_CHROME_WEBSTORE_EXTENSION_ID__"
+MAX_DEVICES = "3"
+PAYMENT_LINK_ID = "plink___FROM_DASHBOARD__"   # ID of https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03
+EXPECTED_AMOUNT = "499"
+EXPECTED_CURRENCY = "usd"
+
+# Secrets (never commit):
+#   wrangler secret put STRIPE_RESTRICTED_KEY   # rk_… read-only "Checkout Sessions: Read" (required; no key → nothing issued)
+#   wrangler secret put STRIPE_WEBHOOK_SECRET   # whsec_… optional backup webhook
+#   wrangler secret put ADMIN_TOKEN             # openssl rand -hex 32; enables /admin/* (docs/manual_unlock.md)
+#   wrangler secret put LICENSE_PRIVATE_JWK     # private JWK printed by `node scripts/keygen.mjs`

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-e2e/
+release/
+keys/
+tests/e2e/out/
+static/wechat_pay_qr.jpg
+server-dist/
+data/
+site/

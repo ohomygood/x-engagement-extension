@@ -1,0 +1,30 @@
+{
+  "name": "x-engagement-list",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "X 互动名单助手 / X Engagement List — local-only Chrome extension",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:e2e": "node scripts/build.mjs --e2e",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p worker",
+    "test": "vitest run",
+    "e2e": "node scripts/build.mjs --e2e && node tests/e2e/run.mjs",
+    "package": "node scripts/build.mjs && node scripts/package.mjs",
+    "build:server": "node scripts/build_server.mjs",
+    "start:server": "node server-dist/server.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261022.1",
+    "@types/chrome": "^0.3.6",
+    "esbuild": "^0.25.12",
+    "fake-indexeddb": "^6.2.6",
+    "jsdom": "^26.1.0",
+    "puppeteer-core": "^24.43.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

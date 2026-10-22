@@ -1,0 +1,24 @@
+# License server on Render (free plan). Created via the Render API on 2026-10-22; this file documents it.
+# It runs worker/src/index.ts through server/node-server.mjs with a JSON-file store on an EPHEMERAL disk:
+# every license write is also printed as `ADMIN_AUDIT {json}` (Render logs). Keys are deterministic per
+# Stripe session / admin ref, so re-running /paid or `admin.mjs issue` after a wipe restores the same key.
+services:
+  - type: web
+    name: xeng-license
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: node server-dist/server.mjs
+    healthCheckPath: /health
+    envVars:
+      - { key: NODE_VERSION, value: "20" }
+      - { key: EXPECTED_AMOUNT, value: "499" }
+      - { key: EXPECTED_CURRENCY, value: usd }
+      - { key: MAX_DEVICES, value: "3" }
+      - { key: LICENSE_PRIVATE_JWK, sync: false }
+      - { key: ADMIN_TOKEN, sync: false }
+      # Set later, when Stripe is ready (no key is issued via /paid until then):
+      - { key: STRIPE_RESTRICTED_KEY, sync: false }
+      - { key: PAYMENT_LINK_ID, sync: false }
+      - { key: STRIPE_WEBHOOK_SECRET, sync: false }
