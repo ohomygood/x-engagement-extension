@@ -22,6 +22,11 @@ State: **test-safe**.
   Events: `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `charge.refunded`.
 - Restricted key: **Checkout Sessions: Read** at minimum. Charges and Balance transactions read access are optional.
 - Render env vars to set (names only): `STRIPE_RESTRICTED_KEY`, `PAYMENT_LINK_ID`, and optionally `STRIPE_WEBHOOK_SECRET`. Then Manual Deploy.
+- **Status 2026-10-22 13:25 (UTC+8): configured.**
+  - `STRIPE_RESTRICTED_KEY` (`rk_live`, read-only) and `PAYMENT_LINK_ID=plink_1UTDRVJvue1A936QhWDxMngL` are set, and `/health` shows `payments_configured: true`.
+  - The link (verified via the API) is active, 499 USD × 1, promo codes off, and redirects to `/paid`.
+  - The key has Read on Checkout Sessions and Charges, so the refund re-check is active.
+  - `REVOKED_REFS=comp:deploy-smoke-recovery-20261022` revokes the deploy smoke-test key.
 
 ## Persistence (Render free, ephemeral disk)
 
