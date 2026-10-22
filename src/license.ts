@@ -41,7 +41,7 @@ export async function signToken(payload: LicensePayload, privateJwk: JsonWebKey)
   return `${p}.${b64urlEncode(sig)}`;
 }
 
-export const KEY_RE = /^XENG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+export const KEY_RE = /^XENG(-[A-Z0-9]{4}){3,4}$/;   // 3 groups: card payment; 4 groups: manual (WeChat)
 
 export async function activate(apiBase: string, key: string, device: string, fetchImpl: typeof fetch = fetch):
     Promise<{ token?: string; error?: string }> {

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
@@ -37,6 +37,31 @@ describe('Node license server (Render)', () => {
       expect(logs.join('\n')).not.toContain(ADMIN);
       expect(logs.join('\n')).not.toContain(JSON.parse(jwk).d);
     } finally { spy.mockRestore(); srv.close(); }
+  });
+
+  it('an admin key keeps working after the store file is deleted (Render restart)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xeng-'));
+    const path = join(dir, 'licenses.json');
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']) as CryptoKeyPair;
+    const proc = { ADMIN_TOKEN: ADMIN, LICENSE_PRIVATE_JWK: JSON.stringify(await crypto.subtle.exportKey('jwk', kp.privateKey)) };
+    const start = async () => {
+      const srv = createServer(envFromProcess(new FileKV(path), proc));
+      await new Promise<void>((r) => srv.listen(0, '127.0.0.1', () => r()));
+      return { srv, base: `http://127.0.0.1:${(srv.address() as AddressInfo).port}` };
+    };
+    const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    let a = await start();
+    try {
+      const { key } = await (await fetch(a.base + '/admin/issue', { method: 'POST', headers: { Authorization: `Bearer ${ADMIN}` },
+        body: JSON.stringify({ by: 'owner', reason: 'test', ref: 'wx-ref-2' }) })).json() as { key: string };
+      a.srv.close();
+      rmSync(dir, { recursive: true, force: true });               // what a Render free restart does
+      a = await start();
+      const r = await fetch(a.base + '/activate', { method: 'POST', body: JSON.stringify({ key, device: 'device-0001' }) });
+      expect(r.status).toBe(200);
+      expect(((await r.json()) as { token: string }).token).toBeTruthy();
+      expect((await fetch(a.base + '/')).status).toBe(200);
+    } finally { spy.mockRestore(); a.srv.close(); }
   });
 
   it('FileKV honours expirationTtl', async () => {

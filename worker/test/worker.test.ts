@@ -1,5 +1,5 @@
 // @vitest-environment node
-import worker, { deriveKey, newKey, verifyStripe, type Env, type LicenseRecord, type StripeSession } from '../src/index';
+import worker, { _resetRecovery, deriveAdminKey, deriveKey, isAdminKey, newKey, verifyStripe, type Env, type LicenseRecord, type StripeSession } from '../src/index';
 import { verifyToken } from '../../src/license';
 
 class MemKV {
@@ -39,13 +39,26 @@ const paid = { type: 'checkout.session.completed', data: { object: { id: SID, pa
 const session = (o: Partial<StripeSession> = {}): StripeSession => ({ id: SID, object: 'checkout.session', mode: 'payment',
   status: 'complete', payment_status: 'paid', payment_link: LINK, amount_total: 499, currency: 'usd',
   client_reference_id: INSTALL, payment_intent: 'pi_1', livemode: false, ...o });
+type Charge = { id: string; status: string; amount: number; amount_refunded: number; refunded: boolean };
 let sessions: Record<string, StripeSession>; let apiCalls: { url: string; auth: string | null }[];
+let charges: Record<string, Charge[]>; let chargesStatus: number;
+const charge = (o: Partial<Charge> = {}): Charge => ({ id: 'ch_1', status: 'succeeded', amount: 499, amount_refunded: 0, refunded: false, ...o });
 beforeEach(() => {
-  sessions = { [SID]: session() }; apiCalls = [];
+  sessions = { [SID]: session() }; apiCalls = []; charges = { pi_1: [charge()] }; chargesStatus = 200;
+  _resetRecovery();
+  // fake Stripe API: GET session, list sessions (by payment link), list charges (by payment intent)
   vi.stubGlobal('fetch', async (u: string, init?: RequestInit) => {
     apiCalls.push({ url: u, auth: new Headers(init?.headers).get('Authorization') });
-    const s = sessions[u.split('/').pop()!];
-    return new Response(JSON.stringify(s ?? { error: {} }), { status: s ? 200 : 404 });
+    const url = new URL(u);
+    const ok = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status });
+    if (url.pathname === '/v1/charges') {
+      if (chargesStatus !== 200) return ok({ error: {} }, chargesStatus);
+      return ok({ data: charges[url.searchParams.get('payment_intent')!] || [], has_more: false });
+    }
+    if (url.pathname === '/v1/checkout/sessions')
+      return ok({ data: Object.values(sessions).filter((s) => s.payment_link === url.searchParams.get('payment_link')), has_more: false });
+    const s = sessions[url.pathname.split('/').pop()!];
+    return ok(s ?? { error: {} }, s ? 200 : 404);
   });
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -76,7 +89,8 @@ describe('license worker', () => {
     const key = keyOf();
     expect(key).toMatch(/^XENG-/);
     expect(await r.text()).toContain(key);
-    expect(apiCalls).toEqual([{ url: `https://api.stripe.com/v1/checkout/sessions/${SID}`, auth: 'Bearer rk_test_readonly' }]);
+    expect(apiCalls).toEqual([{ url: `https://api.stripe.com/v1/checkout/sessions/${SID}`, auth: 'Bearer rk_test_readonly' },
+                              { url: 'https://api.stripe.com/v1/charges?payment_intent=pi_1&limit=10', auth: 'Bearer rk_test_readonly' }]);
     const rec = JSON.parse(env.LICENSES.m.get(`key:${key}`)!) as LicenseRecord;
     expect(rec).toMatchObject({ status: 'active', session: SID, paymentIntent: 'pi_1', ref: INSTALL, source: 'paid-redirect' });
     // refresh / old /claim alias: same key, no second record
@@ -85,13 +99,13 @@ describe('license worker', () => {
     expect([...env.LICENSES.m.values()].join()).not.toMatch(/@/); // no e-mails stored
   });
 
-  it('/paid stops re-showing a key after the 7-day claim window', async () => {
+  it('/paid always re-shows the key (no claim window), also long after issuance', async () => {
     await call(`/paid?session_id=${SID}`);
     const rec = JSON.parse(env.LICENSES.m.get(`key:${keyOf()}`)!) as LicenseRecord;
-    env.LICENSES.m.set(`key:${keyOf()}`, JSON.stringify({ ...rec, created: Date.now() - 8 * 86_400_000 }));
+    env.LICENSES.m.set(`key:${keyOf()}`, JSON.stringify({ ...rec, created: Date.now() - 30 * 86_400_000 }));
     const r = await call(`/paid?session_id=${SID}`);
-    expect(r.status).toBe(410);
-    expect(await r.text()).not.toContain(keyOf());
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain(keyOf());
   });
 
   it('/paid rejects sessions that fail any check, without issuing', async () => {
@@ -183,6 +197,10 @@ describe('license worker', () => {
 
   it('other routes', async () => {
     expect((await call('/nothing')).status).toBe(404);
+    expect(await (await call('/')).json()).toEqual({ service: 'xeng-license', health: '/health' });
+    expect(await (await call('/health')).json()).toEqual({ ok: true, payments_configured: true, admin_enabled: false, revoked_refs: false });
+    env.STRIPE_RESTRICTED_KEY = '';
+    expect(await (await call('/health')).json()).toMatchObject({ payments_configured: false });
     expect((await call('/activate', { method: 'OPTIONS', headers: { Origin: ORIGIN } })).status).toBe(204);
   });
 });
@@ -230,8 +248,9 @@ describe('admin (manual WeChat payments)', () => {
 
   it('revokes idempotently and logs it', async () => {
     const { key } = await (await admin('/admin/issue', WX)).json() as { key: string };
-    expect(await (await admin('/admin/revoke', { key, by: 'owner', reason: 'refunded' })).json()).toEqual({ result: 'revoked' });
-    expect(await (await admin('/admin/revoke', { key, by: 'owner', reason: 'again' })).json()).toEqual({ result: 'already_revoked' });
+    expect(await (await admin('/admin/revoke', { key, by: 'owner', reason: 'refunded' })).json())
+      .toEqual({ result: 'revoked', add_to_REVOKED_REFS: `wechat:${WX.ref}` });
+    expect(await (await admin('/admin/revoke', { key, by: 'owner', reason: 'again' })).json()).toMatchObject({ result: 'already_revoked' });
     expect((await admin('/admin/revoke', { key: 'XENG-AAAA-BBBB-CCCC', by: 'y', reason: 'x' })).status).toBe(404);
     expect(await (await act(key, 'device-0001')).json()).toEqual({ error: 'revoked' });
     expect(logEntries().filter((e) => e.action === 'revoke').map((e) => e.result)).toEqual(['revoked', 'already_revoked', 'not_found']);
@@ -260,7 +279,8 @@ describe('admin (manual WeChat payments)', () => {
   it('broader read-only rk_ key works; sk_/pk_ refused', async () => {
     env.STRIPE_RESTRICTED_KEY = 'rk_live_checkout_charges_balance_read';
     expect((await call(`/paid?session_id=${SID}`)).status).toBe(200);
-    expect(apiCalls.map((c) => c.url)).toEqual([`https://api.stripe.com/v1/checkout/sessions/${SID}`]);
+    expect(apiCalls.map((c) => c.url)).toEqual([`https://api.stripe.com/v1/checkout/sessions/${SID}`,
+                                                'https://api.stripe.com/v1/charges?payment_intent=pi_1&limit=10']);
     env.LICENSES.m.clear();
     for (const k of ['sk_live_full', 'pk_live_pub']) {
       env.STRIPE_RESTRICTED_KEY = k;
@@ -305,5 +325,129 @@ describe('admin CLI', () => {
     expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ channel: 'wechat', ref: 'wx1', source: 'cli' });
     expect(lines.join()).not.toContain(ADMIN);
     expect(await main(['issue', '--url', 'x', '--by', 'y', '--reason', 'r'], f, { ADMIN_TOKEN: 'short' }, out)).toBe(2);
+  });
+
+  it('builds REVOKED_REFS from an exported Render log', async () => {
+    // @ts-expect-error plain .mjs script
+    const { revokedRefsFromLog } = await import('../../scripts/admin.mjs');
+    const log = [
+      '2026-10-22T05:00:00Z ADMIN_AUDIT {"event":"admin","action":"revoke","key":"XENG-AAAA-BBBB-CCCC-DDDD","result":"revoked","durable":"wechat:wx1"}',
+      'ADMIN_AUDIT {"event":"admin","action":"revoke","key":"XENG-ZZZZ-ZZZZ-ZZZZ","result":"not_found"}',
+      'ADMIN_AUDIT {"event":"store_put","k":"key:XENG-EEEE-FFFF-GGGG","v":{"status":"revoked","session":"cs_test_refunded00001"}}',
+      'ADMIN_AUDIT {"event":"store_put","k":"key:XENG-HHHH-JJJJ-KKKK","v":{"status":"active","session":"cs_test_ok0000000001"}}',
+      'noise', 'ADMIN_AUDIT {broken'].join('\n');
+    expect(revokedRefsFromLog(log)).toBe('cs_test_refunded00001,wechat:wx1');
+  });
+});
+
+describe('store wipe (Render free restarts)', () => {
+  const wipe = () => { env.LICENSES = new MemKV(); _resetRecovery(); };
+  const rec = (key: string) => JSON.parse(env.LICENSES.m.get(`key:${key}`)!) as LicenseRecord;
+
+  it('/paid re-issues the same Stripe key after a wipe', async () => {
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    wipe();
+    const r = await call(`/paid?session_id=${SID}`);
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain(key);
+    expect(keyOf()).toBe(key);
+  });
+
+  it('/activate rebuilds an unknown Stripe key from the Payment Link session list (throttled)', async () => {
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    expect((await act(key, 'device-0001')).status).toBe(200);
+    wipe(); apiCalls = [];
+    const r = await act(key, 'device-0001');
+    expect(r.status).toBe(200);
+    expect(rec(key)).toMatchObject({ status: 'active', session: SID, paymentIntent: 'pi_1', recovered: true,
+                                     refundCheck: { status: 'ok' }, devices: ['device-0001'] });
+    expect(apiCalls[0].url).toBe(`https://api.stripe.com/v1/checkout/sessions?payment_link=${LINK}&status=complete&limit=100`);
+    // an unknown key right after: no second Stripe scan within 30 s
+    apiCalls = [];
+    expect((await act('XENG-AAAA-BBBB-CCCC', 'device-0001')).status).toBe(404);
+    expect(apiCalls).toHaveLength(0);
+    // sessions failing verification (other link / amount) never yield keys
+    wipe();
+    sessions = { cs_test_wrongamount000: session({ id: 'cs_test_wrongamount000', amount_total: 100 }) };
+    expect((await act(await deriveKey('cs_test_wrongamount000', env), 'device-0001')).status).toBe(404);
+  });
+
+  it('a refund revokes the key even when the store was wiped (Charges: Read)', async () => {
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    wipe();
+    charges.pi_1 = [charge({ amount_refunded: 499, refunded: true })];
+    expect(await (await act(key, 'device-0001')).json()).toEqual({ error: 'revoked' });
+    expect(rec(key)).toMatchObject({ status: 'revoked', revokedBy: 'stripe', refundCheck: { status: 'refunded' } });
+    wipe();
+    expect((await call(`/paid?session_id=${SID}`)).status).toBe(410);
+  });
+
+  it('partial refunds keep the key; refunds are re-checked at most daily', async () => {
+    charges.pi_1 = [charge({ amount_refunded: 100 })];
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    expect((await act(key, 'device-0001')).status).toBe(200);
+    charges.pi_1 = [charge({ amount_refunded: 499, refunded: true })];
+    apiCalls = [];
+    expect((await act(key, 'device-0001')).status).toBe(200);           // checked < 24 h ago: cached
+    expect(apiCalls).toHaveLength(0);
+    env.LICENSES.m.set(`key:${key}`, JSON.stringify({ ...rec(key), refundCheck: { at: Date.now() - 25 * 3_600_000, status: 'ok' } }));
+    expect((await act(key, 'device-0001')).status).toBe(403);
+  });
+
+  it('degrades gracefully when the key lacks Charges: Read', async () => {
+    chargesStatus = 403;
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    wipe();
+    expect((await act(key, 'device-0001')).status).toBe(200);
+    expect(rec(key).refundCheck?.status).toBe('unavailable');
+  });
+
+  it('admin (WeChat) keys are self-verifying: valid after a wipe, forgeries rejected', async () => {
+    env.ADMIN_TOKEN = ADMIN;
+    const { key } = await (await admin('/admin/issue', WX)).json() as { key: string };
+    expect(key).toMatch(/^XENG(-[A-Z2-9]{4}){4}$/);
+    expect(key).toBe(await deriveAdminKey('wechat', WX.ref, env));
+    expect(await isAdminKey(key, env)).toBe(true);
+    wipe();
+    expect((await act(key, 'device-0001')).status).toBe(200);
+    expect(rec(key)).toMatchObject({ status: 'active', source: 'admin', recovered: true });
+    const forged = key.slice(0, -1) + (key.endsWith('A') ? 'B' : 'A');
+    expect((await act(forged, 'device-0001')).status).toBe(404);
+    expect((await act('XENG-AAAA-BBBB-CCCC-DDDD', 'device-0001')).status).toBe(404);
+    // re-issuing the same ref after a wipe gives the same key
+    expect(await (await admin('/admin/issue', WX)).json()).toMatchObject({ key });
+  });
+
+  it('REVOKED_REFS revocations survive wipes (channel:ref, session, payment intent, key)', async () => {
+    env.ADMIN_TOKEN = ADMIN;
+    const { key: wx } = await (await admin('/admin/issue', WX)).json() as { key: string };
+    await call(`/paid?session_id=${SID}`);
+    const card = keyOf();
+    for (const refs of [`wechat:${WX.ref}, ${SID}`, `${wx} pi_1`]) {
+      wipe();
+      env.REVOKED_REFS = refs;
+      expect((await act(wx, 'device-0001')).status).toBe(403);
+      expect((await act(card, 'device-0001')).status).toBe(403);
+      expect((await call(`/paid?session_id=${SID}`)).status).toBe(410);
+    }
+    env.REVOKED_REFS = 'cs_test_unrelatedsession0';
+    wipe();
+    expect((await act(wx, 'device-0001')).status).toBe(200);
+    expect(await (await call('/health')).json()).toMatchObject({ revoked_refs: true });
+  });
+
+  it('revoking a wiped key records it and says what to add to REVOKED_REFS', async () => {
+    env.ADMIN_TOKEN = ADMIN;
+    await call(`/paid?session_id=${SID}`);
+    const card = keyOf();
+    wipe();
+    expect(await (await admin('/admin/revoke', { key: card, by: 'owner', reason: 'chargeback' })).json())
+      .toEqual({ result: 'revoked', add_to_REVOKED_REFS: card });
+    expect((await act(card, 'device-0001')).status).toBe(403);
   });
 });

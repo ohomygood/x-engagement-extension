@@ -49,7 +49,10 @@ node scripts/admin.mjs revoke --url <LICENSE_URL> --by owner --reason "refunded"
 - Returns `revoked`, `already_revoked` (a no-op that is still logged), or 404 `not_found`.
 - Activated devices lose Pro when their token renews, within 30 days. New activations fail at once.
 - Re-issuing for a refunded ref returns the same, revoked key. Use a new ref for a genuine new payment.
-- Stripe purchases are revoked automatically by the `charge.refunded` webhook (docs/stripe_setup.md), or by hand with this command.
+- Stripe purchases are revoked automatically: by the refund re-check (Charges: Read) or the `charge.refunded` webhook (docs/stripe_setup.md), or by hand with this command.
+- **Make it permanent.** The store is wiped on Render restarts. Add the returned `add_to_REVOKED_REFS` value (e.g. `wechat:<ref>`) to the
+  `REVOKED_REFS` env var on Render and redeploy. `node scripts/admin.mjs revoked-refs --from <exported log>` prints the full list.
+- Keys issued here have 4 groups (`XENG-XXXX-XXXX-XXXX-XXXX`) and are self-verifying, so they keep working after a wipe.
 
 ## 4. Log and security
 

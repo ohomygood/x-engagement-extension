@@ -23,16 +23,25 @@ State: **test-safe**.
 - Restricted key: **Checkout Sessions: Read** at minimum. Charges and Balance transactions read access are optional.
 - Render env vars to set (names only): `STRIPE_RESTRICTED_KEY`, `PAYMENT_LINK_ID`, and optionally `STRIPE_WEBHOOK_SECRET`. Then Manual Deploy.
 
-## Persistence caveat (Render free, ephemeral disk)
+## Persistence (Render free, ephemeral disk)
 
 The store (`LICENSE_STORE_PATH=/tmp/xeng/licenses.json`) is wiped on every restart, redeploy or spin-down.
-- Every license write is also printed as `ADMIN_AUDIT {"event":"store_put",…}`. Every admin action is printed as `ADMIN_AUDIT {"event":"admin",…}`. These lines stay in Render's logs.
-- Keys are **deterministic**: one per Stripe session id, or per admin channel+ref, derived with the signing key. After a wipe:
-  - a Stripe buyer re-opening `/paid` gets the same key back;
-  - the cashier re-running `node scripts/admin.mjs issue` with the same ref gets the same key back.
-- Activated tokens verify offline for 30 days. Renewal after a wipe needs the key re-created as above.
-- **Revocations are lost on a wipe.** Re-run `admin.mjs revoke` for refunded keys, which you can find in `ADMIN_AUDIT` lines.
-- The device list resets on a wipe, which only affects the 3-device cap.
+No key needs it to stay valid:
+- **Stripe keys** are `HMAC(signing key, checkout session id)`.
+  - `/paid?session_id=…` always re-derives and re-shows the key. There is no 7-day claim window any more.
+  - `/activate` with an unknown 3-group key lists the Payment Link's completed sessions in Stripe (Checkout Sessions: Read), re-derives their keys and rebuilds the matching record.
+  - That scan runs at most once per 30 s, then only fetches newer sessions, with up to 20 pages of 100.
+- **Refunds** are re-checked in Stripe when a record is (re)built, and at most daily on activation: `GET /v1/charges?payment_intent=…`, which needs **Charges: Read**.
+  - A fully refunded charge revokes the key. A partial refund keeps it.
+  - Without Charges: Read the check records `unavailable` and the key stays valid. Then rely on the `charge.refunded` webhook (lost on a wipe) and on `REVOKED_REFS`.
+- **Admin (WeChat) keys** are 4-group and self-verifying: `XENG-<id 8>-<mac 8>`. The id is HMAC(channel:ref), and the 40-bit MAC is keyed by the server.
+  - A wiped store still accepts them, and re-issuing the same ref returns the same key.
+- **Durable revocations:** env `REVOKED_REFS`, a comma/space list of any of: `XENG-…` keys, `cs_…` session ids, `pi_…` payment intents, `<channel>:<ref>`.
+  - `/admin/revoke` answers with `add_to_REVOKED_REFS`.
+  - `node scripts/admin.mjs revoked-refs --from <exported log>` rebuilds the whole value from the `ADMIN_AUDIT` lines.
+  - Set it on Render, then redeploy. KV revocations alone are lost on a wipe.
+- **Not recoverable:** the per-key device lists (3-device cap) restart from zero after a wipe, and so do admin lockout counters and `/admin/log` history (the `ADMIN_AUDIT` lines in Render logs remain).
+- Every license write is also printed as `ADMIN_AUDIT {"event":"store_put",…}`, and every admin action as `ADMIN_AUDIT {"event":"admin",…}`.
 - Cold start: the first request after 15 min idle takes about 30–60 s, so the extension's activate call can be slow once.
 
 ## Redeploy

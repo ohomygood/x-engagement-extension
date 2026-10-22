@@ -4,10 +4,10 @@
 // PERSISTENCE CAVEAT (Render free): the disk is ephemeral; every restart/redeploy/spin-down wipes the store.
 //  * Every write of a license record is ALSO printed as `ADMIN_AUDIT {json}` on stdout (Render logs), so
 //    issued keys, refs and revocations survive in the log stream.
-//  * Keys are deterministic (derived from the Stripe session id or the admin channel+ref with the signing
-//    key), so after a wipe the buyer re-opening /paid, or the cashier re-running `admin.mjs issue` with the
-//    same ref, recreates the SAME key. Activated tokens are verified offline for 30 days regardless.
-//  * Revocations are lost on a wipe: re-run `admin.mjs revoke` (see the ADMIN_AUDIT log) after a restart.
+//  * No key needs the store to stay valid (worker/src/index.ts header): Stripe keys are re-derived from the
+//    session (/paid) or found again by listing our Payment Link's sessions (/activate); admin (WeChat) keys are
+//    self-verifying. Refunds are re-checked in Stripe (Charges: Read). Activated tokens verify offline for 30 days.
+//  * Manual revocations and device lists are lost on a wipe: put revocations in env REVOKED_REFS (durable).
 import http from 'node:http';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -59,7 +59,7 @@ export class FileKV {
 
 export function envFromProcess(kv, e = process.env) {
   const pick = ['STRIPE_RESTRICTED_KEY', 'PAYMENT_LINK_ID', 'EXPECTED_AMOUNT', 'EXPECTED_CURRENCY', 'STRIPE_WEBHOOK_SECRET',
-                'LICENSE_PRIVATE_JWK', 'ALLOWED_ORIGINS', 'MAX_DEVICES', 'ADMIN_TOKEN'];
+                'LICENSE_PRIVATE_JWK', 'ALLOWED_ORIGINS', 'MAX_DEVICES', 'ADMIN_TOKEN', 'REVOKED_REFS'];
   const env = { LICENSES: kv };
   for (const k of pick) if (e[k] !== undefined && e[k] !== '') env[k] = e[k];
   return env;

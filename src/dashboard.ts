@@ -89,7 +89,7 @@ async function viewSettings(): Promise<string> {
   return `<section><h3>${tr('plan')}: ${state.plan === 'pro' ? tr('pro') : tr('free')}</h3><p class="muted">${tr('freeNote')}</p>
     ${state.plan === 'pro' ? '' : `<p><a class="btn" href="${esc(upgradeUrl(state.installId))}" target="_blank">${tr('buy')}</a></p>
     ${wechatBlock()}
-    <p><input id="key" placeholder="XENG-XXXX-XXXX-XXXX" size="24"> <button id="act">${tr('activate')}</button> <span id="actmsg"></span></p>`}</section>
+    <p><input id="key" placeholder="XENG-XXXX-XXXX-XXXX" size="29"> <button id="act">${tr('activate')}</button> <span id="actmsg"></span></p>`}</section>
     <section><h3>${tr('account')}</h3>${accs.map((a) => `<label><input type="radio" name="acc" value="${esc(a)}" ${a === state.account ? 'checked' : ''}> @${esc(a)}</label> `).join('') || '—'}
     ${state.account ? `<p><button id="wipe" class="danger">${tr('wipe')} (@${esc(state.account)})</button></p>` : ''}</section>
     <section><h3>${tr('diag')}</h3>${diag}</section><p class="muted">${tr('privacy')} · <a href="${esc(CONFIG.PRIVACY_URL)}" target="_blank">Privacy</a></p>`;

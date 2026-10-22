@@ -13,10 +13,23 @@
  *   POST /admin/revoke      cashier: revoke a key            (both: Authorization: Bearer ADMIN_TOKEN ≥ 32 chars)
  *   GET  /admin/log         recent admin log entries (append-only KV keys adminlog:<ts>:<rand>; each action is
  *                           also console.log'd as `ADMIN_AUDIT {json}` for Cloudflare Workers logs)
- *   GET  /health
+ *   GET  /health, GET /
  *
  * Stores no e-mail or name: only key → {status, devices, created, session, paymentIntent, ref}.
  * Without STRIPE_RESTRICTED_KEY + PAYMENT_LINK_ID no key is ever issued.
+ *
+ * SURVIVING A WIPED STORE (Render free disk): no key depends on local state to stay valid.
+ *  * Stripe keys = HMAC(server signing key, session id). /paid always re-derives and re-shows the key.
+ *    /activate with an unknown 3-group key lists our Payment Link's completed sessions from Stripe
+ *    (Checkout Sessions: Read), re-derives their keys and rebuilds the matching record (throttled, cached).
+ *  * Refunds: the charge is re-checked in Stripe (GET /v1/charges?payment_intent=…, needs Charges: Read) when a
+ *    record is (re)built and at most every 24 h on activation; a fully refunded payment revokes the key. Without
+ *    Charges: Read this degrades to "unavailable" (key stays valid) — revoke refunded keys via REVOKED_REFS.
+ *  * Admin (WeChat) keys are 4-group and self-verifying: XENG-<id 8>-<mac 8>, id = HMAC(channel:ref),
+ *    mac = HMAC(id), 40-bit MAC under the server key. A wiped store still accepts them.
+ *  * Durable revocations: env REVOKED_REFS (comma/space list of keys, cs_ session ids, pi_ payment intents or
+ *    <channel>:<ref>), checked on every /paid and /activate. KV revocations are lost on a wipe.
+ *  * Device lists (max 3) live in the store and restart from zero after a wipe.
  */
 import { signToken, type LicensePayload } from '../../src/license';
 
@@ -31,6 +44,7 @@ export interface Env {
   LICENSE_PRIVATE_JWK: string;     // JSON JWK from scripts/keygen.mjs (wrangler secret)
   ALLOWED_ORIGINS?: string;        // comma list, e.g. "chrome-extension://<id>"; empty = allow any chrome-extension://
   MAX_DEVICES?: string;
+  REVOKED_REFS?: string;           // durable revocations, see header
 }
 
 export interface LicenseRecord {
@@ -38,9 +52,13 @@ export interface LicenseRecord {
   ref?: string; source?: 'paid-redirect' | 'webhook' | 'admin';
   manual?: { channel: string; amount: number | null; currency: string | null; ref: string; by: string };
   revokedBy?: string; revokedReason?: string;
+  recovered?: boolean; refundCheck?: { at: number; status: RefundStatus };
 }
+export type RefundStatus = 'ok' | 'refunded' | 'unavailable' | 'error' | 'n/a';
 
-const CLAIM_WINDOW_MS = 7 * 86_400_000;   // /paid re-shows an already-issued key for 7 days, then says "already claimed"
+const REFUND_RECHECK_MS = 86_400_000;      // re-check a Stripe key's charge for refunds at most daily
+const SCAN_MIN_INTERVAL_MS = 30_000;       // unknown-key lookups hit Stripe's session list at most this often
+const SCAN_MAX_PAGES = 20;
 const SESSION_RE = /^cs_(test|live)_[A-Za-z0-9]{10,200}$/;
 const REF_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -51,25 +69,50 @@ export class PayError extends Error {
 export interface StripeSession {
   id: string; object: string; mode?: string; status?: string; payment_status?: string; payment_link?: string | null;
   amount_total?: number | null; currency?: string | null; client_reference_id?: string | null; payment_intent?: string | null;
-  livemode?: boolean; currency_conversion?: { amount_total?: number; source_currency?: string } | null;
+  livemode?: boolean; created?: number; currency_conversion?: { amount_total?: number; source_currency?: string } | null;
   presentment_details?: { presentment_amount?: number; presentment_currency?: string } | null;
+}
+
+function stripeKey(env: Env): string {
+  const key = (env.STRIPE_RESTRICTED_KEY || '').trim();
+  if (!key) throw new PayError('not_configured', 503, 'STRIPE_RESTRICTED_KEY missing');
+  // Only restricted keys. Any rk_ key with Checkout Sessions: Read works (Charges: Read additionally enables the
+  // refund check); full sk_ secret keys and anything else are refused.
+  if (!key.startsWith('rk_')) throw new PayError('not_configured', 503, 'use a restricted rk_ key');
+  return key;
+}
+
+/** GET a Stripe API path (read-only). Maps HTTP errors to PayError. */
+async function stripeGet(path: string, env: Env, fetchImpl: typeof fetch): Promise<unknown> {
+  const key = stripeKey(env);
+  let r: Response;
+  try {
+    r = await fetchImpl(`https://api.stripe.com/v1/${path}`, { headers: { Authorization: `Bearer ${key}` } });
+  } catch { throw new PayError('stripe_unreachable', 502); }
+  if (r.status === 404) throw new PayError('session_not_found', 404);
+  if (r.status === 401 || r.status === 403) throw new PayError('stripe_auth', 503, `HTTP ${r.status}`);
+  if (r.status !== 200) throw new PayError('stripe_error', 502, `HTTP ${r.status}`);
+  return r.json();
 }
 
 export async function fetchSession(sid: string, env: Env, fetchImpl: typeof fetch = fetch): Promise<StripeSession> {
   if (!SESSION_RE.test(sid)) throw new PayError('bad_session_id', 400);
-  const key = (env.STRIPE_RESTRICTED_KEY || '').trim();
-  if (!key) throw new PayError('not_configured', 503, 'STRIPE_RESTRICTED_KEY missing');
-  // Only restricted keys. Any rk_ key with Checkout Sessions: Read works (extra read-only permissions such as
-  // Charges / Balance transactions are simply unused); full sk_ secret keys and anything else are refused.
-  if (!key.startsWith('rk_')) throw new PayError('not_configured', 503, 'use a restricted rk_ key');
-  let r: Response;
+  return await stripeGet(`checkout/sessions/${sid}`, env, fetchImpl) as StripeSession;
+}
+
+/** Was this payment fully refunded? Needs Charges: Read; degrades to 'unavailable' without it. */
+export async function refundStatus(pi: string | undefined, env: Env, fetchImpl: typeof fetch = fetch): Promise<RefundStatus> {
+  if (!pi || !/^pi_[A-Za-z0-9]{1,100}$/.test(pi)) return 'n/a';
   try {
-    r = await fetchImpl(`https://api.stripe.com/v1/checkout/sessions/${sid}`, { headers: { Authorization: `Bearer ${key}` } });
-  } catch { throw new PayError('stripe_unreachable', 502); }
-  if (r.status === 404) throw new PayError('session_not_found', 404);
-  if (r.status === 401 || r.status === 403) throw new PayError('stripe_auth', 503);
-  if (r.status !== 200) throw new PayError('stripe_error', 502, `HTTP ${r.status}`);
-  return r.json() as Promise<StripeSession>;
+    const j = await stripeGet(`charges?payment_intent=${encodeURIComponent(pi)}&limit=10`, env, fetchImpl) as
+      { data?: { refunded?: boolean; amount?: number; amount_refunded?: number; status?: string }[] };
+    const ch = (j.data || []).filter((c) => c.status === 'succeeded' || c.refunded);
+    if (ch.some((c) => c.refunded === true || (Number(c.amount) > 0 && Number(c.amount_refunded) >= Number(c.amount)))) return 'refunded';
+    return 'ok';
+  } catch (e) {
+    if (e instanceof PayError && e.reason === 'stripe_auth') return 'unavailable';
+    return 'error';
+  }
 }
 
 /** Throws unless this is a complete, paid $4.99 purchase through our Payment Link. */
@@ -97,6 +140,114 @@ export async function deriveKey(sid: string, env: Env): Promise<string> {
   return `XENG-${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8, 12)}`;
 }
 
+async function hmacChars(label: string, msg: string, env: Env, n: number): Promise<string> {
+  const d = (JSON.parse(env.LICENSE_PRIVATE_JWK) as JsonWebKey).d;
+  if (!d) throw new PayError('not_configured', 503, 'LICENSE_PRIVATE_JWK has no d');
+  const k = await crypto.subtle.importKey('raw', enc.encode(`${label}:${d}`), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const b = new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(msg)));
+  return Array.from(b.slice(0, n), (x) => ALPHABET[x % 32]).join('');
+}
+
+/** Admin (WeChat) key: deterministic per channel+ref AND self-verifying (valid without any stored record). */
+export async function deriveAdminKey(channel: string, ref: string, env: Env): Promise<string> {
+  const id = await hmacChars('xeng-admin-id-v1', `${channel}:${ref}`, env, 8);
+  const mac = await hmacChars('xeng-admin-mac-v1', id, env, 8);
+  return `XENG-${id.slice(0, 4)}-${id.slice(4)}-${mac.slice(0, 4)}-${mac.slice(4)}`;
+}
+
+export async function isAdminKey(key: string, env: Env): Promise<boolean> {
+  const m = /^XENG-([A-Z0-9]{4})-([A-Z0-9]{4})-([A-Z0-9]{4})-([A-Z0-9]{4})$/.exec(key);
+  if (!m) return false;
+  return safeEq(await hmacChars('xeng-admin-mac-v1', m[1] + m[2], env, 8), m[3] + m[4]);
+}
+
+/** Durable revocation list from env REVOKED_REFS: keys, cs_ sessions, pi_ intents, <channel>:<ref>. */
+const revokedCache = new Map<string, Promise<{ keys: Set<string>; pis: Set<string> }>>();
+export function revokedSet(env: Env): Promise<{ keys: Set<string>; pis: Set<string> }> {
+  const raw = (env.REVOKED_REFS || '').trim();
+  const ck = raw + '|' + (env.LICENSE_PRIVATE_JWK || '').length;
+  let p = revokedCache.get(ck);
+  if (!p) {
+    p = (async () => {
+      const keys = new Set<string>(), pis = new Set<string>();
+      for (const t of raw.split(/[\s,]+/).filter(Boolean)) {
+        if (KEY_RE.test(t.toUpperCase())) keys.add(t.toUpperCase());
+        else if (SESSION_RE.test(t)) keys.add(await deriveKey(t, env));
+        else if (/^pi_[A-Za-z0-9]{1,100}$/.test(t)) pis.add(t);
+        else if (/^[a-z]+:[A-Za-z0-9_\-.:/#]{1,100}$/.test(t)) {
+          const [ch, ...rest] = t.split(':'); const ref = rest.join(':');
+          keys.add(await deriveAdminKey(ch, ref, env));
+          keys.add(await deriveKey(`admin:${ch}:${ref}`, env));     // pre-v2 admin keys
+        }
+      }
+      return { keys, pis };
+    })();
+    if (revokedCache.size > 20) revokedCache.clear();
+    revokedCache.set(ck, p);
+  }
+  return p;
+}
+async function isRevokedByEnv(key: string, rec: LicenseRecord | null, env: Env): Promise<boolean> {
+  if (!env.REVOKED_REFS) return false;
+  const r = await revokedSet(env);
+  return r.keys.has(key) || (!!rec?.paymentIntent && r.pis.has(rec.paymentIntent));
+}
+
+/** Refund re-check for Stripe-paid records; a fully refunded payment revokes the key (persisted + logged). */
+async function refreshRefund(key: string, rec: LicenseRecord, env: Env, fetchImpl: typeof fetch, force = false): Promise<LicenseRecord> {
+  if (rec.status !== 'active' || !rec.paymentIntent || rec.source === 'admin') return rec;
+  if (!force && rec.refundCheck && Date.now() - rec.refundCheck.at < REFUND_RECHECK_MS) return rec;
+  const status = await refundStatus(rec.paymentIntent, env, fetchImpl);
+  const next: LicenseRecord = { ...rec, refundCheck: { at: Date.now(), status } };
+  if (status === 'refunded') Object.assign(next, { status: 'revoked', revokedBy: 'stripe', revokedReason: 'refunded' });
+  await putRec(env, key, next);
+  return next;
+}
+
+/** Recovery scan state (in memory; the rebuilt records are written back to the store). */
+const scan = { last: 0, createdMax: 0, map: new Map<string, StripeSession>(), link: '' };
+export function _resetRecovery() { scan.last = 0; scan.createdMax = 0; scan.map.clear(); scan.link = ''; revokedCache.clear(); }
+
+/** Unknown 3-group key after a wipe: find its session among our Payment Link's completed sessions. */
+async function findSessionForKey(key: string, env: Env, fetchImpl: typeof fetch): Promise<StripeSession | null> {
+  if (scan.link !== (env.PAYMENT_LINK_ID || '')) { scan.map.clear(); scan.createdMax = 0; scan.link = env.PAYMENT_LINK_ID || ''; }
+  if (scan.map.has(key)) return scan.map.get(key)!;
+  if (!env.PAYMENT_LINK_ID || Date.now() - scan.last < SCAN_MIN_INTERVAL_MS) return null;
+  scan.last = Date.now();
+  let after = ''; const since = scan.createdMax;
+  try {
+    for (let page = 0; page < SCAN_MAX_PAGES; page++) {
+      const q = `checkout/sessions?payment_link=${encodeURIComponent(env.PAYMENT_LINK_ID)}&status=complete&limit=100` +
+        (since ? `&created[gte]=${since}` : '') + (after ? `&starting_after=${encodeURIComponent(after)}` : '');
+      const j = await stripeGet(q, env, fetchImpl) as { data?: StripeSession[]; has_more?: boolean };
+      for (const s of j.data || []) {
+        try { verifySession(s, s.id, env); } catch { continue; }
+        scan.map.set(await deriveKey(s.id, env), s);
+        if (s.created && s.created > scan.createdMax) scan.createdMax = s.created;
+      }
+      if (!j.has_more || !j.data?.length) break;
+      after = j.data[j.data.length - 1].id;
+    }
+  } catch (e) {
+    if (!(e instanceof PayError)) throw e;
+    auditLine(env, { ts: new Date().toISOString(), event: 'recovery_scan_failed', reason: e.reason });
+    return null;
+  }
+  return scan.map.get(key) || null;
+}
+
+/** Store record for a verified session (deterministic key), shared by redeem and recovery. */
+async function writeSessionRecord(s: StripeSession, env: Env, source: LicenseRecord['source'], recovered: boolean) {
+  const key = await deriveKey(s.id, env);
+  const pi = s.payment_intent ? String(s.payment_intent) : undefined;
+  const rec: LicenseRecord = { status: 'active', devices: [], created: Date.now(), session: s.id, paymentIntent: pi,
+                               ref: s.client_reference_id || undefined, source, ...(recovered ? { recovered: true } : {}) };
+  await putRec(env, key, rec);
+  await env.LICENSES.put(`session:${s.id}`, key);
+  if (pi) await env.LICENSES.put(`pi:${pi}`, key);
+  return { key, rec };
+}
+
 /** API-verify then issue once. status 'issued' = new key; 'existing' = session already redeemed. */
 export async function redeem(sid: string, env: Env, source: 'paid-redirect' | 'webhook', fetchImpl: typeof fetch = fetch):
     Promise<{ key: string; status: 'issued' | 'existing'; rec: LicenseRecord }> {
@@ -107,18 +258,13 @@ export async function redeem(sid: string, env: Env, source: 'paid-redirect' | 'w
     const rec = await getRec(env, prev);
     if (rec) return { key: prev, status: 'existing', rec };
   }
-  const key = await deriveKey(sid, env);
-  const pi = s.payment_intent ? String(s.payment_intent) : undefined;
-  const rec: LicenseRecord = { status: 'active', devices: [], created: Date.now(), session: sid, paymentIntent: pi,
-                               ref: s.client_reference_id || undefined, source };
-  await putRec(env, key, rec);
-  await env.LICENSES.put(`session:${sid}`, key);
-  if (pi) await env.LICENSES.put(`pi:${pi}`, key);
+  const { key, rec } = await writeSessionRecord(s, env, source, false);
   return { key, status: 'issued', rec };
 }
 
 const TOKEN_DAYS = 30;
-const KEY_RE = /^XENG-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+const KEY_RE = /^XENG(-[A-Z0-9]{4}){3,4}$/;     // 3 groups: Stripe; 4 groups: admin (self-verifying)
+const isStripeFormat = (k: string) => /^XENG(-[A-Z0-9]{4}){3}$/.test(k);
 const DEVICE_RE = /^[A-Za-z0-9-]{8,64}$/;
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 
@@ -195,7 +341,6 @@ const PAY_MSG: Record<string, [string, string]> = {
   not_paid: ['这笔付款尚未完成，完成后请刷新本页。', "This payment isn't complete yet. Refresh this page once it is."],
   wrong_payment_link: ['这笔付款不是 Pro 订单。', "This payment isn't a Pro order."],
   wrong_amount: ['付款金额与订单不符。', "The amount paid doesn't match the order."],
-  already_claimed: ['这笔付款的激活码已经领取过。如需找回，请联系我们并提供付款收据。', 'The key for this payment was already claimed. To recover it, contact us with your receipt.'],
   revoked: ['这笔付款已退款，激活码已失效。', 'This payment was refunded and its key is no longer valid.'],
 };
 function page(inner: string, status: number): Response {
@@ -208,13 +353,14 @@ function page(inner: string, status: number): Response {
 async function paid(url: URL, env: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
   const sid = url.searchParams.get('session_id') || '';
   try {
-    const { key, status, rec } = await redeem(sid, env, 'paid-redirect', fetchImpl);
-    if (rec.status !== 'active') throw new PayError('revoked', 410);
-    if (status === 'existing' && Date.now() - rec.created > CLAIM_WINDOW_MS) throw new PayError('already_claimed', 410);
+    const { key, rec: rec0 } = await redeem(sid, env, 'paid-redirect', fetchImpl);
+    // the key is derived from the session, so this page can always re-show it (also after a store wipe)
+    const rec = await refreshRefund(key, rec0, env, fetchImpl);
+    if (rec.status !== 'active' || await isRevokedByEnv(key, rec, env)) throw new PayError('revoked', 410);
     return page(`<h1>感谢购买 X 互动名单助手 Pro / Thanks for buying Pro</h1><p>你的激活码 / Your license key:</p>
        <p><code style="font-size:22px;user-select:all">${esc(key)}</code></p>
        <p>打开扩展 → 设置 → 输入激活码。最多 3 台设备。7 天内可退款。<br>Open the extension → Settings → paste the key. Up to 3 devices. 7-day refund.</p>
-       <p>请保存此页面或激活码；我们不保存你的邮箱。本页 7 天后不再显示激活码。<br>Save this key. We don't store your e-mail, and this page stops showing the key after 7 days.</p>`, 200);
+       <p>请保存激活码，或收藏本页链接（随时可重新打开查看）；我们不保存你的邮箱。<br>Save this key, or bookmark this page (you can reopen it any time). We don't store your e-mail.</p>`, 200);
   } catch (e) {
     if (!(e instanceof PayError)) throw e;
     const [zh, en] = PAY_MSG[e.reason] || ['验证付款时出错，请稍后刷新重试。', 'Something went wrong verifying the payment. Refresh to retry in a moment.'];
@@ -222,15 +368,28 @@ async function paid(url: URL, env: Env, fetchImpl: typeof fetch = fetch): Promis
   }
 }
 
-async function activateRoute(req: Request, env: Env): Promise<Response> {
+async function activateRoute(req: Request, env: Env, fetchImpl: typeof fetch = fetch): Promise<Response> {
   const h = cors(req, env);
   let body: { key?: unknown; device?: unknown };
   try { body = await req.json(); } catch { return json({ error: 'bad-json' }, 400, h); }
   const key = String(body.key || '').trim().toUpperCase();
   const device = String(body.device || '');
   if (!KEY_RE.test(key) || !DEVICE_RE.test(device)) return json({ error: 'invalid-input' }, 400, h);
-  const rec = await getRec(env, key);
-  if (!rec) return json({ error: 'unknown-key' }, 404, h);
+  let rec = await getRec(env, key);
+  if (await isRevokedByEnv(key, rec, env)) return json({ error: 'revoked' }, 403, h);
+  if (!rec) {
+    // store wiped (or never seen here): rebuild from proof that doesn't depend on local state
+    if (await isAdminKey(key, env)) {
+      rec = { status: 'active', devices: [], created: Date.now(), session: 'admin:recovered', source: 'admin', recovered: true };
+      await putRec(env, key, rec);
+    } else if (isStripeFormat(key)) {
+      const s = await findSessionForKey(key, env, fetchImpl);
+      if (s) rec = (await writeSessionRecord(s, env, 'paid-redirect', true)).rec;
+    }
+    if (!rec) return json({ error: 'unknown-key' }, 404, h);
+    if (await isRevokedByEnv(key, rec, env)) return json({ error: 'revoked' }, 403, h);
+  }
+  if (rec.status === 'active') rec = await refreshRefund(key, rec, env, fetchImpl);
   if (rec.status !== 'active') return json({ error: 'revoked' }, 403, h);
   const max = Number(env.MAX_DEVICES || 3);
   if (!rec.devices.includes(device)) {
@@ -330,8 +489,9 @@ async function adminIssue(req: Request, env: Env): Promise<Response> {
     await adminLog(env, { ...base, key: existing, result: 'existing' });
     return json({ result: 'existing', key: existing });
   }
-  // deterministic per channel+ref: even two concurrent calls for one WeChat ref yield the same single key
-  const key = await deriveKey(`admin:${channel}:${ref}`, env);
+  // deterministic per channel+ref (two concurrent calls for one WeChat ref yield the same single key) and
+  // self-verifying, so it stays valid after a store wipe
+  const key = await deriveAdminKey(channel, ref, env);
   const rec: LicenseRecord = { status: 'active', devices: [], created: Date.now(), session: `admin:${channel}:${ref}`,
                                ref: install, source: 'admin', manual: { channel, amount, currency, ref, by } };
   await putRec(env, key, rec);
@@ -348,9 +508,18 @@ async function adminRevoke(req: Request, env: Env): Promise<Response> {
   const rec = await getRec(env, key);
   const result = !rec ? 'not_found' : rec.status === 'revoked' ? 'already_revoked' : 'revoked';
   if (rec && result === 'revoked') await putRec(env, key, { ...rec, status: 'revoked', revokedBy: by, revokedReason: reason });
+  let rec2 = rec;
+  if (!rec && (await isAdminKey(key, env) || (isStripeFormat(key) && await findSessionForKey(key, env, fetch)))) {
+    // valid key whose record was wiped: record the revocation anyway
+    rec2 = { status: 'revoked', devices: [], created: Date.now(), session: 'recovered', recovered: true, revokedBy: by, revokedReason: reason };
+    await putRec(env, key, rec2);
+  }
+  const res = !rec2 ? 'not_found' : result === 'not_found' ? 'revoked' : result;
+  const durable = rec2?.manual ? `${rec2.manual.channel}:${rec2.manual.ref}` : rec2?.session?.startsWith('cs_') ? rec2.session : key;
   await adminLog(env, { action: 'revoke', by, reason, key, ref: b.ref ? String(b.ref).slice(0, 100) : null,
-                        source: String(b.source || 'endpoint').slice(0, 16), result });
-  return json({ result }, result === 'not_found' ? 404 : 200);
+                        source: String(b.source || 'endpoint').slice(0, 16), result: res, durable });
+  // KV is wiped on Render free restarts: the caller should add `durable` to REVOKED_REFS to make it permanent
+  return json({ result: res, add_to_REVOKED_REFS: res === 'not_found' ? undefined : durable }, res === 'not_found' ? 404 : 200);
 }
 
 async function adminLogList(url: URL, env: Env): Promise<Response> {
@@ -380,9 +549,12 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req, env) });
     if (url.pathname === '/stripe/webhook' && req.method === 'POST') return webhook(req, env);
     if (url.pathname === '/activate' && req.method === 'POST') return activateRoute(req, env);
+    if (url.pathname === '/' && req.method === 'GET') return json({ service: 'xeng-license', health: '/health' });
     if ((url.pathname === '/paid' || url.pathname === '/claim') && req.method === 'GET') return paid(url, env);
     if (url.pathname.startsWith('/admin/')) return adminRoute(req, url, env);
-    if (url.pathname === '/health') return json({ ok: true });
+    if (url.pathname === '/health') return json({ ok: true,
+      payments_configured: (env.STRIPE_RESTRICTED_KEY || '').startsWith('rk_') && (env.PAYMENT_LINK_ID || '').startsWith('plink_'),
+      admin_enabled: (env.ADMIN_TOKEN || '').length >= ADMIN_MIN_LEN, revoked_refs: !!env.REVOKED_REFS });
     return json({ error: 'not-found' }, 404);
   },
 } satisfies ExportedHandler<Env>;

@@ -63,7 +63,7 @@ So the redirect and the webhook produce the same single key, whichever arrives f
 2. Pay, or use a test-mode link.
 3. You land on `<LICENSE_URL>/paid?session_id=…`, which shows the `XENG-XXXX-XXXX-XXXX` key.
 4. Paste the key into Settings → **Activate**.
-5. Reloading the page shows the same key for 7 days. After that, or after a refund, it no longer shows the key.
+5. Reloading the page always shows the same key, also after a server restart. After a full refund it no longer does.
 
 ## What `/paid` verifies
 
@@ -75,7 +75,13 @@ So the redirect and the webhook produce the same single key, whichever arrives f
 | `payment_link` | `== PAYMENT_LINK_ID` |
 | amount + currency | `499` `usd` in the integration currency (see Adaptive Pricing) |
 | `client_reference_id` | optional; if present, must look like an install id |
-| single use | one key per session (KV `session:<id>`); re-shown for 7 days only |
+| single use | one deterministic key per session (`HMAC(signing key, session id)`); re-shown on every visit; a replay yields the same key |
+| refund | `GET /v1/charges?payment_intent=…` (needs **Charges: Read**; optional) — full refund → key revoked |
+
+## Restricted key permissions
+
+- **Checkout Sessions: Read** (required): `/paid`, the webhook re-check, and rebuilding keys after a store wipe (session list filtered by `payment_link`).
+- **Charges: Read** (recommended): refund detection that survives store wipes. Without it, `/health` still works and keys stay valid. Refunded keys then need `REVOKED_REFS` (docs/deploy.md).
 
 ## Adaptive Pricing
 
