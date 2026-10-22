@@ -346,7 +346,8 @@ const PAY_MSG: Record<string, [string, string]> = {
 function page(inner: string, status: number): Response {
   return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <meta name="robots" content="noindex"><title>X Engagement List Pro</title>
-    <body style="font-family:system-ui;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6">${inner}</body>`,
+    <body style="font-family:system-ui;max-width:640px;margin:40px auto;padding:0 16px;line-height:1.6">${inner}
+    <p style="color:#667">联系我们 / Contact: <a href="mailto:go_with_prob@mail.grokbot.com">go_with_prob@mail.grokbot.com</a></p></body>`,
     { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' } });
 }
 
