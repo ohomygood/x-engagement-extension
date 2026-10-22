@@ -1,6 +1,6 @@
 # Stripe setup for X 互动名单助手 Pro (for the owner)
 
-WeChat Pay buyers (¥29) get keys issued by hand: see `docs/manual_unlock.md`.
+Stripe is the only payment method. Comps and support keys can be issued by hand: see `docs/manual_unlock.md`.
 
 Already wired in the code: the live Pro Payment Link `https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03` ($4.99 one-off).
 - The extension's **Buy Pro** buttons open it as `…?client_reference_id=<install id>`. The install id is a random ID made by the extension.
@@ -85,8 +85,8 @@ So the redirect and the webhook produce the same single key, whichever arrives f
 
 ## Adaptive Pricing
 
-- If Adaptive Pricing is on for the account, which is an account-wide Payments setting, CNY buyers see a converted local price, **not exactly ¥29**.
-  The listing and button now say "$4.99, payable in local currency".
+- If Adaptive Pricing is on for the account, which is an account-wide Payments setting, CNY buyers see a converted local price, not a fixed CNY amount.
+  The listing and button say "$4.99 USD; Stripe checkout may show your local currency" (Adaptive Pricing is always on for Payment Links; buyers can also pay in USD).
 - Sessions on API ≥ 2025-03-31 keep `amount_total`/`currency` at `499`/`usd`, with the local amount in `presentment_details`.
   On older API versions the local values sit at the top level, with USD under `currency_conversion`.
   The Worker accepts both.

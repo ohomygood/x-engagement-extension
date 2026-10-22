@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Cashier CLI for the license Worker (docs/manual_unlock.md). Reads ADMIN_TOKEN from env; never prints it.
-//   node scripts/admin.mjs issue  --url <LICENSE_URL> --by owner --reason "WeChat ¥29 confirmed" --ref <txn> [--channel wechat --amount 29 --currency CNY --install <install id>]
+//   node scripts/admin.mjs issue  --url <LICENSE_URL> --by owner --reason "comp for reviewer" --ref comp-2026-001 [--channel comp --install <install id>]
 //   node scripts/admin.mjs revoke --url <LICENSE_URL> --by owner --reason "refunded" --key XENG-XXXX-XXXX-XXXX [--ref <txn>]
 //   node scripts/admin.mjs log    --url <LICENSE_URL> [--limit 50]
 //   node scripts/admin.mjs revoked-refs --from <exported Render log>   → value for env REVOKED_REFS (no token needed)
@@ -25,7 +25,7 @@ export async function main(argv = process.argv.slice(2), fetchImpl = fetch, env 
   const [cmd, ...rest] = argv;
   const { values: v } = parseArgs({ args: rest, options: {
     url: { type: 'string' }, by: { type: 'string' }, reason: { type: 'string' }, ref: { type: 'string' },
-    channel: { type: 'string', default: 'wechat' }, amount: { type: 'string' }, currency: { type: 'string' },
+    channel: { type: 'string', default: 'comp' }, amount: { type: 'string' }, currency: { type: 'string' },
     install: { type: 'string' }, key: { type: 'string' }, limit: { type: 'string', default: '50' }, from: { type: 'string' } } });
   if (cmd === 'revoked-refs') {
     if (!v.from) { out.error('--from <log file> is required'); return 2; }

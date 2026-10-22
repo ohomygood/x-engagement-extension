@@ -39,7 +39,7 @@ No key needs it to stay valid:
 - **Refunds** are re-checked in Stripe when a record is (re)built, and at most daily on activation: `GET /v1/charges?payment_intent=…`, which needs **Charges: Read**.
   - A fully refunded charge revokes the key. A partial refund keeps it.
   - Without Charges: Read the check records `unavailable` and the key stays valid. Then rely on the `charge.refunded` webhook (lost on a wipe) and on `REVOKED_REFS`.
-- **Admin (WeChat) keys** are 4-group and self-verifying: `XENG-<id 8>-<mac 8>`. The id is HMAC(channel:ref), and the 40-bit MAC is keyed by the server.
+- **Admin (comp/support) keys** are 4-group and self-verifying: `XENG-<id 8>-<mac 8>`. The id is HMAC(channel:ref), and the 40-bit MAC is keyed by the server.
   - A wiped store still accepts them, and re-issuing the same ref returns the same key.
 - **Durable revocations:** env `REVOKED_REFS`, a comma/space list of any of: `XENG-…` keys, `cs_…` session ids, `pi_…` payment intents, `<channel>:<ref>`.
   - `/admin/revoke` answers with `add_to_REVOKED_REFS`.

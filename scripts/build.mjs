@@ -12,10 +12,10 @@ await build({
   entryPoints: { content: 'src/content.ts', background: 'src/background.ts', dashboard: 'src/dashboard.ts' },
   bundle: true, format: 'iife', target: 'chrome114', outdir: out, minify: !e2e, sourcemap: false, legalComments: 'none',
 });
-// The WeChat QR (gitignored local copy) ships only in the real build; E2E builds, whose screenshots are committed
-// as store assets, never include it.
-cpSync('static', out, { recursive: true, filter: (src) => !(e2e && src.endsWith('wechat_pay_qr.jpg')) });
-if (e2e) cpSync('tests/fixtures/wechat_qr_placeholder.jpg', `${out}/wechat_pay_qr.jpg`);   // placeholder, never the real QR
+// Allowlist: only the dashboard page, its CSS, locales and the three icons ship. No other image (and never a payment QR)
+// can end up in a build, even if one is dropped into static/.
+const ALLOWED = /^static(\/(dashboard\.(html|css)|_locales(\/[a-z_A-Z]+(\/messages\.json)?)?|icons(\/icon(16|48|128)\.png)?))?$/;
+cpSync('static', out, { recursive: true, filter: (src) => ALLOWED.test(src.replace(/\\/g, '/')) });
 const matches = ['https://x.com/*'];
 if (e2e) matches.push('http://localhost/*', 'http://127.0.0.1/*');
 const manifest = {
@@ -35,4 +35,7 @@ const manifest = {
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
 };
 writeFileSync(`${out}/manifest.json`, JSON.stringify(manifest, null, 2));
+const { checkRelease } = await import('./check_release.mjs');
+const bad = checkRelease(out);
+if (bad.length) { console.error('RELEASE CHECK FAILED:\n' + bad.join('\n')); process.exit(3); }
 console.log(`built ${out}/ (v${pkg.version}${e2e ? ', e2e' : ''})`);

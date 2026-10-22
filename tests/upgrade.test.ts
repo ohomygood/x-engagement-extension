@@ -10,8 +10,42 @@ describe('upgrade link', () => {
   });
 });
 
-describe('manual WeChat option', () => {
-  it('is configured with ¥29, a placeholder contact and a local QR file', () => {
-    expect(CONFIG.WECHAT).toMatchObject({ ENABLED: true, PRICE_CNY: 29, QR: 'wechat_pay_qr.jpg', CONTACT: 'go_with_prob@mail.grokbot.com' });
+describe('Stripe only (no WeChat)', () => {
+  it('has no WeChat config or copy in the extension sources', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    expect((CONFIG as Record<string, unknown>).WECHAT).toBeUndefined();
+    const files = [...readdirSync('src').map((f) => `src/${f}`), 'static/dashboard.html', 'static/dashboard.css',
+                   'static/_locales/en/messages.json', 'static/_locales/zh_CN/messages.json', 'store/listing.zh.md', 'store/listing.en.md'];
+    for (const f of files) {
+      const t = readFileSync(f, 'utf8');
+      for (const bad of ['微信', '¥29', '¥129', 'wechat', '收款码', '付款截图']) expect(t.toLowerCase(), `${bad} in ${f}`).not.toContain(bad.toLowerCase());
+    }
+  });
+});
+
+describe('release check', () => {
+  it('flags QR images, unexpected images and WeChat copy; passes a clean build', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const realQr = join(mkdtempSync(join(tmpdir(), 'qr-')), 'real.jpg');
+    writeFileSync(realQr, Buffer.from('fake-real-qr-bytes'));
+    process.env.XENG_REAL_QR_PATH = realQr;
+    vi.resetModules();
+    // @ts-expect-error plain .mjs script
+    const { checkRelease } = await import('../scripts/check_release.mjs');
+    const dir = mkdtempSync(join(tmpdir(), 'rel-'));
+    mkdirSync(join(dir, 'icons'));
+    writeFileSync(join(dir, 'icons/icon16.png'), 'png');
+    writeFileSync(join(dir, 'dashboard.html'), '<p>Buy Pro $4.99</p>');
+    expect(checkRelease(dir)).toEqual([]);
+    writeFileSync(join(dir, 'pay.jpg'), Buffer.from('fake-real-qr-bytes'));         // real QR under an innocent name
+    writeFileSync(join(dir, 'wechat_pay_qr.jpg'), 'x');
+    writeFileSync(join(dir, 'x.js'), 'const t = "或微信支付 ¥29"');
+    const bad = checkRelease(dir).join('\n');
+    expect(bad).toContain('pay.jpg: is the real payment QR');
+    expect(bad).toContain('wechat_pay_qr.jpg: QR/WeChat-like file name');
+    expect(bad).toContain('x.js: WeChat/QR payment text');
+    delete process.env.XENG_REAL_QR_PATH;
   });
 });

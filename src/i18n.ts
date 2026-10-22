@@ -20,7 +20,7 @@ const D = {
             'Unfollow detection needs two complete Followers snapshots. Open your Followers page, click “Start snapshot”, and repeat in a few days.'],
   lastSnap: ['快照时间', 'Snapshot taken'], removed: ['取关了你', 'Unfollowed you'], added: ['新关注你', 'New followers'],
   account: ['账号', 'Account'], plan: ['当前版本', 'Plan'], free: ['免费版', 'Free'], pro: ['Pro', 'Pro'],
-  buy: ['银行卡购买 Pro（$4.99 一次性）', 'Buy Pro ($4.99 one-off)'], key: ['授权码', 'License key'], activate: ['激活', 'Activate'],
+  buy: ['购买 Pro：$4.99 美元一次性（银行卡，Stripe 结账页可能显示本地货币）', 'Buy Pro: $4.99 USD one-off (card; Stripe checkout may show your local currency)'], key: ['授权码', 'License key'], activate: ['激活', 'Activate'],
   wipe: ['删除这个账号的全部本地数据', 'Delete all local data for this account'], wiped: ['已删除', 'Deleted'],
   diag: ['诊断（页面结构检测）', 'Diagnostics (page structure check)'],
   privacy: ['所有数据只保存在你的浏览器本地，不上传任何服务器。唯一的网络请求是激活 Pro 授权。',

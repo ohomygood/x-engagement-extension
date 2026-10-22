@@ -99,6 +99,25 @@ describe('license worker', () => {
     expect([...env.LICENSES.m.values()].join()).not.toMatch(/@/); // no e-mails stored
   });
 
+  it('/paid re-checks refunds on every visit (forces revocation right after a refund)', async () => {
+    await call(`/paid?session_id=${SID}`);
+    const key = keyOf();
+    expect((await act(key, 'device-0001')).status).toBe(200);
+    charges.pi_1 = [charge({ amount_refunded: 499, refunded: true })];
+    expect((await act(key, 'device-0001')).status).toBe(200);        // activation: cached for 24 h
+    expect((await call(`/paid?session_id=${SID}`)).status).toBe(410); // /paid: immediate re-check
+    expect(await (await act(key, 'device-0001')).json()).toEqual({ error: 'revoked' });
+  });
+
+  it('works for a plain link purchase without client_reference_id (key tied to the session, not the install)', async () => {
+    sessions[SID] = session({ client_reference_id: null });
+    const r = await call(`/paid?session_id=${SID}`);
+    expect(r.status).toBe(200);
+    const key = keyOf();
+    expect(await r.text()).toContain(key);
+    expect((await act(key, 'any-other-device-01')).status).toBe(200);
+  });
+
   it('/paid always re-shows the key (no claim window), also long after issuance', async () => {
     await call(`/paid?session_id=${SID}`);
     const rec = JSON.parse(env.LICENSES.m.get(`key:${keyOf()}`)!) as LicenseRecord;
@@ -322,7 +341,7 @@ describe('admin CLI', () => {
     expect(code).toBe(0);
     expect(calls[0].url).toBe('https://license.test/admin/issue');
     expect((calls[0].init.headers as Record<string, string>).Authorization).toBe(`Bearer ${ADMIN}`);
-    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ channel: 'wechat', ref: 'wx1', source: 'cli' });
+    expect(JSON.parse(String(calls[0].init.body))).toMatchObject({ channel: 'comp', ref: 'wx1', source: 'cli' });
     expect(lines.join()).not.toContain(ADMIN);
     expect(await main(['issue', '--url', 'x', '--by', 'y', '--reason', 'r'], f, { ADMIN_TOKEN: 'short' }, out)).toBe(2);
   });

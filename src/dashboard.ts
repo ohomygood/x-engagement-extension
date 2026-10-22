@@ -88,22 +88,10 @@ async function viewSettings(): Promise<string> {
     <p class="muted">${esc(health.url)} · ${fmt(health.at)}</p>` : '<p class="muted">—</p>';
   return `<section><h3>${tr('plan')}: ${state.plan === 'pro' ? tr('pro') : tr('free')}</h3><p class="muted">${tr('freeNote')}</p>
     ${state.plan === 'pro' ? '' : `<p><a class="btn" href="${esc(upgradeUrl(state.installId))}" target="_blank">${tr('buy')}</a></p>
-    ${wechatBlock()}
     <p><input id="key" placeholder="XENG-XXXX-XXXX-XXXX" size="29"> <button id="act">${tr('activate')}</button> <span id="actmsg"></span></p>`}</section>
     <section><h3>${tr('account')}</h3>${accs.map((a) => `<label><input type="radio" name="acc" value="${esc(a)}" ${a === state.account ? 'checked' : ''}> @${esc(a)}</label> `).join('') || '—'}
     ${state.account ? `<p><button id="wipe" class="danger">${tr('wipe')} (@${esc(state.account)})</button></p>` : ''}</section>
     <section><h3>${tr('diag')}</h3>${diag}</section><p class="muted">${tr('privacy')} · <a href="${esc(CONFIG.PRIVACY_URL)}" target="_blank">Privacy</a></p>`;
-}
-
-/** Chinese-only manual WeChat Pay instructions with the install id the cashier needs. */
-export function wechatBlock(): string {
-  const w = CONFIG.WECHAT;
-  if (!w.ENABLED || state.lang !== 'zh') return '';
-  return `<div class="wechat"><h4>或微信支付 ¥${w.PRICE_CNY}</h4>
-    <img src="${esc(w.QR)}" alt="微信收款码" width="180" id="wxqr">
-    <ol><li>用微信扫码支付 ¥${w.PRICE_CNY}。你的 install id：<code>${esc(state.installId)}</code></li>
-    <li>付款后把付款截图 + install id 发到 <b>${esc(w.CONTACT)}</b>，24 小时内开通。</li>
-    <li>收到激活码后在下方输入即可。</li></ol></div>`;
 }
 
 async function deviceId(): Promise<string> {
@@ -139,7 +127,6 @@ function bind() {
     $('#actmsg').textContent = res.token && state.plan === 'pro' ? tr('activated') : tr('err') + (res.error || 'invalid-token');
     if (state.plan === 'pro') render();
   };
-  const qr = $('#wxqr') as HTMLImageElement | null; if (qr) qr.onerror = () => { qr.style.display = 'none'; };
   const wipe = $('#wipe');
   if (wipe) wipe.onclick = async () => { if (confirm(tr('wipe') + '?')) { await wipeAccount(state.account); await load(''); } };
 }

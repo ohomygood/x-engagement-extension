@@ -1,10 +1,8 @@
-# 手动发码 / Manual license keys (WeChat Pay) for X 互动名单助手 Pro
+# 手动发码 / Manual license keys (comps and support) for X 互动名单助手 Pro
 
-For the cashier. In the Chinese UI (Settings), buyers see "或微信支付 ¥29": the QR, their **安装 ID / install id**, and the contact.
-The contact is **go_with_prob@mail.grokbot.com** (`src/config.ts` → `CONFIG.WECHAT.CONTACT`). Never publish a personal WeChat ID.
-Buyer copy (zh): "付款后把付款截图 + install id 发到 go_with_prob@mail.grokbot.com，24 小时内开通". **Issue the key within 24 h.**
-Buyers pay the QR, then send the install id plus a screenshot or transaction number.
-**No WeChat API is ever called**: the cashier checks the payment in WeChat by hand, then issues a key.
+Stripe is the only payment method. WeChat Pay was removed from the extension, the store listing and the site on
+2026-10-22, and no QR or ¥ price is shown anywhere. This path is for the owner only: free comps (reviewers,
+partners) and support cases. It never takes money itself. Every action is logged.
 
 ## 1. One-time setup: ADMIN_TOKEN
 
@@ -22,8 +20,8 @@ cd worker && npx wrangler secret put ADMIN_TOKEN       # paste it at the prompt
 
 ```bash
 read -rs ADMIN_TOKEN && export ADMIN_TOKEN   # paste; nothing is echoed and it isn't saved to shell history
-node scripts/admin.mjs issue --url <LICENSE_URL> --by owner --reason "WeChat Pay ¥29 confirmed" \
-  --ref 4200001234202610220001 --amount 29 --install <install id from the buyer>
+node scripts/admin.mjs issue --url <LICENSE_URL> --by owner --reason "comp for reviewer" \
+  --channel comp --ref comp-2026-001
 # → {"result":"issued","key":"XENG-…"}   send the key to the buyer; they paste it in Settings → Activate
 ```
 
@@ -31,14 +29,13 @@ or with curl:
 
 ```bash
 curl -sS -X POST "<LICENSE_URL>/admin/issue" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"by":"owner","reason":"WeChat Pay confirmed","channel":"wechat","amount":29,"currency":"CNY",
-       "ref":"4200001234202610220001","install":"<install id>"}'
+  -d '{"by":"owner","reason":"comp for reviewer","channel":"comp","ref":"comp-2026-001"}'
 ```
 
-- `ref` (the WeChat transaction id, or the note if there is no id) is **required**.
+- `ref` (a unique note, e.g. `comp-2026-001`) is **required**.
 - **Idempotent per channel + ref**: running it again for the same ref returns `{"result":"existing","key":<the same key>}` and never mints a second key.
   The key is derived from channel + ref, so two concurrent calls also give one key.
-- `channel` defaults to `wechat`; `currency` defaults to CNY for wechat/alipay; `install` is optional.
+- `channel` defaults to `comp`; `install` is optional.
 
 ## 3. Revoke (refund)
 
@@ -50,7 +47,7 @@ node scripts/admin.mjs revoke --url <LICENSE_URL> --by owner --reason "refunded"
 - Activated devices lose Pro when their token renews, within 30 days. New activations fail at once.
 - Re-issuing for a refunded ref returns the same, revoked key. Use a new ref for a genuine new payment.
 - Stripe purchases are revoked automatically: by the refund re-check (Charges: Read) or the `charge.refunded` webhook (docs/stripe_setup.md), or by hand with this command.
-- **Make it permanent.** The store is wiped on Render restarts. Add the returned `add_to_REVOKED_REFS` value (e.g. `wechat:<ref>`) to the
+- **Make it permanent.** The store is wiped on Render restarts. Add the returned `add_to_REVOKED_REFS` value (e.g. `comp:<ref>`) to the
   `REVOKED_REFS` env var on Render and redeploy. `node scripts/admin.mjs revoked-refs --from <exported log>` prints the full list.
 - Keys issued here have 4 groups (`XENG-XXXX-XXXX-XXXX-XXXX`) and are self-verifying, so they keep working after a wipe.
 
@@ -67,8 +64,8 @@ node scripts/admin.mjs revoke --url <LICENSE_URL> --by owner --reason "refunded"
 - Lockout via KV counters (15 min): 5 failures per `CF-Connecting-IP`, or 20 failures in total, return 429, even for the right token.
   KV is eventually consistent, so treat these as approximate limits; the token's length is the real protection.
 
-## 5. QR image
+## 5. No QR, ever
 
-`static/wechat_pay_qr.jpg` is a **local, gitignored copy**. Create it with `scripts/install_wechat_qr.sh`, which copies `/workspace/payment/wechat_pay_qr.jpg`.
-It is referenced by `CONFIG.WECHAT.QR`. `npm run build` packages it, so **the Chrome Web Store zip contains the QR**, which is intended because buyers must see it.
-It is not in git. If it's missing, the image hides and the text instructions remain.
+No payment QR is shipped. `scripts/build.mjs` copies only an allowlist of static files and then runs `scripts/check_release.mjs`.
+`scripts/package.mjs` checks the zip too, and the site build checks `site/`.
+Each check fails on: any image other than the icons and the site screenshots; QR/WeChat-like file names; a file identical to the owner's real QR; or WeChat/¥ payment copy.

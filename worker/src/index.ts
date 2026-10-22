@@ -355,7 +355,9 @@ async function paid(url: URL, env: Env, fetchImpl: typeof fetch = fetch): Promis
   try {
     const { key, rec: rec0 } = await redeem(sid, env, 'paid-redirect', fetchImpl);
     // the key is derived from the session, so this page can always re-show it (also after a store wipe)
-    const rec = await refreshRefund(key, rec0, env, fetchImpl);
+    // re-check the refund status on every visit (one extra read call): re-opening this page after a refund
+    // revokes the key immediately instead of waiting for the daily activation re-check
+    const rec = await refreshRefund(key, rec0, env, fetchImpl, true);
     if (rec.status !== 'active' || await isRevokedByEnv(key, rec, env)) throw new PayError('revoked', 410);
     return page(`<h1>感谢购买 X 互动名单助手 Pro / Thanks for buying Pro</h1><p>你的激活码 / Your license key:</p>
        <p><code style="font-size:22px;user-select:all">${esc(key)}</code></p>
@@ -469,7 +471,7 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
 async function adminIssue(req: Request, env: Env): Promise<Response> {
   const b = await readBody(req);
   const by = text(b.by, 'by'), reason = text(b.reason, 'reason');
-  const channel = String(b.channel || 'wechat').toLowerCase();
+  const channel = String(b.channel || 'comp').toLowerCase();
   if (!CHANNELS.has(channel)) throw new AdminError('bad channel');
   const ref = String(b.ref ?? '').trim();
   if (!ADMIN_REF_RE.test(ref)) throw new AdminError("'ref' (payment transaction id / note) is required: letters, digits, _-.:/# max 100");
