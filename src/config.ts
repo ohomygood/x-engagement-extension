@@ -7,7 +7,7 @@ export const CONFIG = {
   PAYMENT_LINK: 'https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03',
   // ECDSA P-256 public key (JWK) matching the Worker's LICENSE_PRIVATE_JWK secret. Generate with `node scripts/keygen.mjs`.
   LICENSE_PUBLIC_JWK: { kty: 'EC', crv: 'P-256', x: 'ppmEi6hpdId5IJgYv3pIghDoHyteezJ15s6bssu5hko', y: 'bSnuoDnDL2bB_8uRaHZbz2gQe5fa7S34DaCEkH-gihQ' } as JsonWebKey,
-  PRIVACY_URL: 'https://xeng-site.pages.dev/privacy.html',
+  PRIVACY_URL: 'https://xeng-site.pages.dev/privacy',
   // Manual WeChat Pay (Chinese UI only). The cashier issues the key by hand: docs/manual_unlock.md. No WeChat API.
   // QR is a LOCAL, gitignored copy packaged from static/ (scripts/install_wechat_qr.sh); hidden if missing.
   WECHAT: { ENABLED: true, PRICE_CNY: 29, QR: 'wechat_pay_qr.jpg', CONTACT: 'go_with_prob@mail.grokbot.com' },   // e-mail only; never a personal WeChat ID

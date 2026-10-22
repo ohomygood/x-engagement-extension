@@ -1,6 +1,6 @@
 # X 互动名单助手 / X Engagement List (Chrome MV3)
 
-> Public source, all rights reserved (see `LICENSE`). Not yet on the Chrome Web Store. Privacy policy: https://xeng-site.pages.dev/privacy.html · license server on Render (`render.yaml`, `docs/deploy.md`).
+> Public source, all rights reserved (see `LICENSE`). Not yet on the Chrome Web Store. Privacy policy: https://xeng-site.pages.dev/privacy · license server on Render (`render.yaml`, `docs/deploy.md`).
 
 Local-only Chrome extension: commenter leaderboard (7/30/90 days), pending-reply list, not-following-back and
 unfollower detection from user-started snapshots of the user's own lists, CSV export and multi-account (Pro).
