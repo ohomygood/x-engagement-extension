@@ -42,7 +42,8 @@ export interface Env {
   STRIPE_WEBHOOK_SECRET?: string;  // whsec_… optional backup route (wrangler secret)
   ADMIN_TOKEN?: string;            // openssl rand -hex 32 (wrangler secret). Unset/short → /admin/* is 404.
   LICENSE_PRIVATE_JWK: string;     // JSON JWK from scripts/keygen.mjs (wrangler secret)
-  ALLOWED_ORIGINS?: string;        // comma list, e.g. "chrome-extension://<id>"; empty = allow any chrome-extension://
+  ALLOWED_ORIGINS?: string;        // comma list of exact origins (web sites and/or "chrome-extension://<id>").
+                                   // chrome-extension:// origins: any is allowed unless one is listed (then only listed ones).
   MAX_DEVICES?: string;
   REVOKED_REFS?: string;           // durable revocations, see header
 }
@@ -297,7 +298,10 @@ export async function verifyStripe(body: string, header: string | null, secret: 
 function cors(req: Request, env: Env): Record<string, string> {
   const origin = req.headers.get('Origin') || '';
   const allowed = (env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const ok = allowed.length ? allowed.includes(origin) : origin.startsWith('chrome-extension://');
+  const isExt = origin.startsWith('chrome-extension://');
+  const extListed = allowed.some((o) => o.startsWith('chrome-extension://'));
+  // Web origins must be listed exactly; listing only web sites never locks out the (unpacked/unlisted) extension.
+  const ok = isExt ? (!extListed || allowed.includes(origin)) : (!!origin && allowed.includes(origin));
   return ok ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type', 'Vary': 'Origin' } : {};
 }

@@ -16,6 +16,8 @@ services:
       - { key: EXPECTED_AMOUNT, value: "499" }
       - { key: EXPECTED_CURRENCY, value: usd }
       - { key: MAX_DEVICES, value: "3" }
+      # Exact web origins allowed by CORS (extensions stay allowed unless one chrome-extension:// origin is listed):
+      - { key: ALLOWED_ORIGINS, value: "https://xeng-site.pages.dev,https://xeng.aiseenlab.com,https://audit.aiseenlab.com,https://aiseenlab.com" }
       - { key: LICENSE_PRIVATE_JWK, sync: false }
       - { key: ADMIN_TOKEN, sync: false }
       # Set later, when Stripe is ready (no key is issued via /paid until then):

@@ -231,6 +231,21 @@ describe('license worker', () => {
     expect(await (await call('/health')).json()).toMatchObject({ payments_configured: false });
     expect((await call('/activate', { method: 'OPTIONS', headers: { Origin: ORIGIN } })).status).toBe(204);
   });
+
+  it('CORS: listed web origins + any extension unless one is listed', async () => {
+    const pre = (o: string) => call('/activate', { method: 'OPTIONS', headers: { Origin: o } });
+    env.ALLOWED_ORIGINS = 'https://xeng.aiseenlab.com, https://xeng-site.pages.dev';
+    expect((await pre('https://xeng.aiseenlab.com')).headers.get('Access-Control-Allow-Origin')).toBe('https://xeng.aiseenlab.com');
+    expect((await pre('https://xeng-site.pages.dev')).headers.get('Access-Control-Allow-Origin')).toBe('https://xeng-site.pages.dev');
+    expect((await pre('chrome-extension://zzzzzzzzzzzzzzzz')).headers.get('Access-Control-Allow-Origin')).toBe('chrome-extension://zzzzzzzzzzzzzzzz');
+    expect((await pre('https://evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect((await pre('https://xeng.aiseenlab.com.evil.example')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+    env.ALLOWED_ORIGINS = `https://xeng.aiseenlab.com,${ORIGIN}`;
+    expect((await pre('chrome-extension://zzzzzzzzzzzzzzzz')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+    expect((await pre(ORIGIN)).headers.get('Access-Control-Allow-Origin')).toBe(ORIGIN);
+    env.ALLOWED_ORIGINS = '';
+    expect((await pre('https://xeng.aiseenlab.com')).headers.get('Access-Control-Allow-Origin')).toBeNull();
+  });
 });
 
 const ADMIN = 'f'.repeat(16) + '0123456789abcdef0123456789abcdef';
