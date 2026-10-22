@@ -1,6 +1,6 @@
 # X 互动名单助手 / X Engagement List (Chrome MV3)
 
-> Public source, all rights reserved (see `LICENSE`). Not yet on the Chrome Web Store. Privacy policy: https://xeng-site.pages.dev/privacy · license server on Render (`render.yaml`, `docs/deploy.md`).
+> Public source, all rights reserved (see `LICENSE`). Not yet on the Chrome Web Store. Privacy policy: https://xeng.aiseenlab.com/privacy · license server on Render (`render.yaml`, `docs/deploy.md`).
 
 Local-only Chrome extension: commenter leaderboard (7/30/90 days), pending-reply list, not-following-back and
 unfollower detection from user-started snapshots of the user's own lists, CSV export and multi-account (Pro).
@@ -49,7 +49,7 @@ node scripts/keygen.mjs  # license key pair: public JWK -> src/config.ts, privat
 ## Refund policy
 
 **Full refund on request within 7 days of purchase, once per customer.** Contact: go_with_prob@mail.grokbot.com.
-Shown on https://xeng-site.pages.dev/terms (bilingual, linked from the site footer) and on every license-server `/paid` page
+Shown on https://xeng.aiseenlab.com/terms (bilingual, linked from the site footer) and on every license-server `/paid` page
 (`REFUND_POLICY` in `worker/src/index.ts`; keep in sync with `TERMS` in `scripts/build_site.py`).
 
 Handling a request (owner):

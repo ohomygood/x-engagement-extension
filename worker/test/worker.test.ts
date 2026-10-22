@@ -102,7 +102,7 @@ describe('license worker', () => {
   it('/paid shows the refund policy (7 days, once per customer) and the contact', async () => {
     const ok = await (await call(`/paid?session_id=${SID}`)).text();
     for (const t of ['full refund on request within 7 days of purchase, once per customer', '购买后 7 天内可申请全额退款，每位客户限一次',
-      'mailto:go_with_prob@mail.grokbot.com', 'https://xeng-site.pages.dev/terms']) expect(ok).toContain(t);
+      'mailto:go_with_prob@mail.grokbot.com', 'https://xeng.aiseenlab.com/terms']) expect(ok).toContain(t);
     expect(ok).not.toMatch(/7-day refund/);
     const bad = await (await call('/paid?session_id=nope')).text();             // error pages carry it too
     expect(bad).toContain('within 7 days of purchase, once per customer');

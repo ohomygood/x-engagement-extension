@@ -354,7 +354,7 @@ export const REFUND_POLICY: [string, string] = [
   `Refund policy: full refund on request within 7 days of purchase, once per customer. Email ${CONTACT} with your key or Stripe receipt; the key is revoked once refunded.`,
 ];
 const REFUND_HTML = `<p style="color:#445">${REFUND_POLICY[0]}<br>${REFUND_POLICY[1]}
-    <a href="https://xeng-site.pages.dev/terms">Terms / 条款</a></p>`;
+    <a href="https://xeng.aiseenlab.com/terms">Terms / 条款</a></p>`;
 function page(inner: string, status: number): Response {
   return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
     <meta name="robots" content="noindex"><title>X Engagement List Pro</title>

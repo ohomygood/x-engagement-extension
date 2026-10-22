@@ -14,6 +14,8 @@ BUY_ENABLED = False
 
 PAYMENT_LINK = "https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03"
 CONTACT = "go_with_prob@mail.grokbot.com"
+SITE_URL = "https://xeng.aiseenlab.com"   # custom domain (Pages project xeng-site); old host below 301-redirects here
+OLD_HOST = "xeng-site.pages.dev"
 # Refund policy: keep in sync with REFUND_POLICY in worker/src/index.ts (license server /paid page)
 NOTIFY = f"mailto:{CONTACT}?subject=Notify%20me%3A%20X%20Engagement%20List&body=Please%20email%20me%20when%20the%20extension%20is%20in%20the%20Chrome%20Web%20Store."
 SHOTS = {"en": [("en-1-leaderboard.png", "Top commenters"), ("en-2-pending.png", "Replies you haven't answered"),
@@ -116,7 +118,7 @@ def section(lang):
 <footer><p><a href="/terms">{e(t['terms'])}</a> · <a href="/privacy">{e(t['privacy'])}</a> · {e(t['contact'])}: <a href="mailto:{CONTACT}">{CONTACT}</a></p><p class="muted">{e(t['disclaimer'])}</p></footer></div>"""
 
 index = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>X Engagement List / X 互动名单助手</title><meta name="description" content="{html.escape(T['en']['lead'])}">
+<title>X Engagement List / X 互动名单助手</title><link rel="canonical" href="{SITE_URL}/"><meta name="description" content="{html.escape(T['en']['lead'])}">
 <style>{CSS}</style><script>(function(){{var q=new URLSearchParams(location.search).get("lang");var zh=q?q==="zh":/^zh/i.test(navigator.language||"");
 document.documentElement.lang=zh?"zh-CN":"en";}})();</script></head><body>
 <header><div class="brand">X Engagement List · X 互动名单助手</div><div class="lang"><button type="button" id="lang">中 / EN</button></div></header>
@@ -126,7 +128,7 @@ document.documentElement.lang=zh?"zh-CN":"en";}})();</script></head><body>
 (out / "index.html").write_text(index, encoding="utf-8")
 
 terms_html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Terms &amp; Refund Policy — X Engagement List / 服务条款与退款政策</title><style>{CSS}</style>{LANG_JS}</head><body>
+<title>Terms &amp; Refund Policy — X Engagement List / 服务条款与退款政策</title><link rel="canonical" href="{SITE_URL}/terms"><style>{CSS}</style>{LANG_JS}</head><body>
 <header><div class="brand">X Engagement List · X 互动名单助手</div><div class="lang"><button type="button" id="lang">中 / EN</button></div></header>
 <main>{terms_section('en')}{terms_section('zh')}</main>
 <script>document.getElementById("lang").onclick=function(){{var h=document.documentElement;h.lang=h.lang==="en"?"zh-CN":"en";}};</script>
@@ -135,9 +137,20 @@ terms_html = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><met
 
 body = markdown.markdown((root / "store" / "privacy-policy.md").read_text(encoding="utf-8"))
 (out / "privacy.html").write_text(f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Privacy Policy — X Engagement List</title><style>body{{font:16px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#0f1419}}h1{{font-size:24px}}a{{color:#1d9bf0}}</style></head>
+<title>Privacy Policy — X Engagement List</title><link rel="canonical" href="{SITE_URL}/privacy"><style>body{{font:16px/1.65 system-ui,-apple-system,"PingFang SC",sans-serif;max-width:760px;margin:40px auto;padding:0 18px;color:#0f1419}}h1{{font-size:24px}}a{{color:#1d9bf0}}</style></head>
 <body><p><a href="/">← X Engagement List</a></p>{body}</body></html>""", encoding="utf-8")
 (out / "_headers").write_text("/*\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: strict-origin-when-cross-origin\n  X-Frame-Options: DENY\n", encoding="utf-8")
+# Pages advanced-mode worker: the old production pages.dev host 301-redirects to the custom domain (path + query kept);
+# preview hosts (<hash>.xeng-site.pages.dev) and the custom domain are served from the static assets.
+(out / "_worker.js").write_text(f"""const CANONICAL = "{SITE_URL.split('://')[1]}", OLD = "{OLD_HOST}";
+export default {{
+  async fetch(req, env) {{
+    const u = new URL(req.url);
+    if (u.hostname === OLD) {{ u.protocol = "https:"; u.hostname = CANONICAL; u.port = ""; return Response.redirect(u.toString(), 301); }}
+    return env.ASSETS.fetch(req);
+  }},
+}};
+""", encoding="utf-8")
 r = subprocess.run(["node", str(root / "scripts" / "check_release.mjs"), str(out)])
 if r.returncode:
     sys.exit("site/ failed the release check (QR / WeChat)")

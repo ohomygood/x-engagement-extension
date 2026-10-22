@@ -7,7 +7,7 @@ export const CONFIG = {
   PAYMENT_LINK: 'https://buy.stripe.com/8x2bJ2gbY8bLfiC2hT0Ny03',
   // ECDSA P-256 public key (JWK) matching the Worker's LICENSE_PRIVATE_JWK secret. Generate with `node scripts/keygen.mjs`.
   LICENSE_PUBLIC_JWK: { kty: 'EC', crv: 'P-256', x: 'ppmEi6hpdId5IJgYv3pIghDoHyteezJ15s6bssu5hko', y: 'bSnuoDnDL2bB_8uRaHZbz2gQe5fa7S34DaCEkH-gihQ' } as JsonWebKey,
-  PRIVACY_URL: 'https://xeng-site.pages.dev/privacy',
+  PRIVACY_URL: 'https://xeng.aiseenlab.com/privacy',
 };
 
 /** Stripe allows alphanumerics, '-' and '_' (max 200) in client_reference_id. */

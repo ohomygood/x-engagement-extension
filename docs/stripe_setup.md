@@ -81,7 +81,7 @@ So the redirect and the webhook produce the same single key, whichever arrives f
 ## Refund policy
 
 **Full refund on request within 7 days of purchase, once per customer.** Contact: go_with_prob@mail.grokbot.com.
-Shown on https://xeng-site.pages.dev/terms (bilingual, linked from the site footer) and on every license-server `/paid` page
+Shown on https://xeng.aiseenlab.com/terms (bilingual, linked from the site footer) and on every license-server `/paid` page
 (`REFUND_POLICY` in `worker/src/index.ts`; keep in sync with `TERMS` in `scripts/build_site.py`).
 
 Handling a request (owner):
