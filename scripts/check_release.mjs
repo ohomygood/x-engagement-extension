@@ -1,6 +1,6 @@
 // Release guard: no payment QR / WeChat asset or copy may ever ship in a build dir, zip, or the static site.
 //   node scripts/check_release.mjs <dir-or-zip>...      (exit 1 on findings)
-// Rules: images only as icons/icon{16,48,128}.png (extension) or screenshots/*.png (site); no QR/WeChat-like
+// Rules: images only as icons/icon{16,32,48,128}.png (extension) or screenshots/*.png (site); no QR/WeChat-like
 // file names; no file byte-identical to the owner's real QR (if present on this machine); no WeChat / ¥ copy.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
@@ -17,7 +17,7 @@ const here = (() => { try { return fileURLToPath(new URL('../brand/', import.met
 const BRAND_DIR = [here, join(process.cwd(), 'brand')].find((d) => d && existsSync(d)) || '';
 const brandHashes = BRAND_DIR ? new Set(readdirSync(BRAND_DIR).map((f) => createHash('sha256').update(readFileSync(join(BRAND_DIR, f))).digest('hex'))) : new Set();
 const BRAND_PATH = /^([a-z0-9-]+\/)?(brand\/[a-z0-9_-]+\.(png|svg|ico)|favicon\.ico)$/;
-const OK_IMG = /^([a-z0-9-]+\/)?(icons\/icon(16|48|128)\.png|screenshots\/[a-z0-9-]+\.png)$/;   // optional single top folder (dev zip)
+const OK_IMG = /^([a-z0-9-]+\/)?(icons\/icon(16|32|48|128)\.png|screenshots\/[a-z0-9-]+\.png)$/;   // optional single top folder (dev zip)
 const TEXT_RE = /\.(html|js|css|json|md|txt)$/i;
 const BAD_TEXT = /微信|wechat|weixin|收款码|¥\s?\d|[\w/.-]*qr[\w-]*\.(?:jpe?g|png|webp|gif)/i;
 

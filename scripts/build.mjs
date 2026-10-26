@@ -12,9 +12,9 @@ await build({
   entryPoints: { content: 'src/content.ts', background: 'src/background.ts', dashboard: 'src/dashboard.ts' },
   bundle: true, format: 'iife', target: 'chrome114', outdir: out, minify: !e2e, sourcemap: false, legalComments: 'none',
 });
-// Allowlist: only the dashboard page, its CSS, locales and the three icons ship. No other image (and never a payment QR)
+// Allowlist: only the dashboard page, its CSS, locales and the four icons ship. No other image (and never a payment QR)
 // can end up in a build, even if one is dropped into static/.
-const ALLOWED = /^static(\/(dashboard\.(html|css)|_locales(\/[a-z_A-Z]+(\/messages\.json)?)?|icons(\/icon(16|48|128)\.png)?))?$/;
+const ALLOWED = /^static(\/(dashboard\.(html|css)|_locales(\/[a-z_A-Z]+(\/messages\.json)?)?|icons(\/icon(16|32|48|128)\.png)?))?$/;
 cpSync('static', out, { recursive: true, filter: (src) => ALLOWED.test(src.replace(/\\/g, '/')) });
 const matches = ['https://x.com/*'];
 if (e2e) matches.push('http://localhost/*', 'http://127.0.0.1/*');
@@ -25,8 +25,9 @@ const manifest = {
   description: '__MSG_short__',
   version: pkg.version,
   default_locale: 'en',
-  icons: { 16: 'icons/icon16.png', 48: 'icons/icon48.png', 128: 'icons/icon128.png' },
-  action: { default_title: '__MSG_name__', default_icon: { 16: 'icons/icon16.png', 48: 'icons/icon48.png' } },
+  icons: { 16: 'icons/icon16.png', 32: 'icons/icon32.png', 48: 'icons/icon48.png', 128: 'icons/icon128.png' },
+  action: { default_title: '__MSG_name__', default_icon: { 16: 'icons/icon16.png', 32: 'icons/icon32.png', 48: 'icons/icon48.png' } },
+  homepage_url: 'https://xeng.aiseenlab.com',
   background: { service_worker: 'background.js' },
   content_scripts: [{ matches, js: ['content.js'], run_at: 'document_idle' }],
   // No "permissions" and no "host_permissions": IndexedDB needs none, the dashboard opens via chrome.tabs.create

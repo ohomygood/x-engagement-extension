@@ -1,6 +1,6 @@
 {
   "name": "x-engagement-list",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "description": "X 互动名单助手 / X Engagement List — local-only Chrome extension",

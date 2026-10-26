@@ -1,4 +1,5 @@
-"""Generate simple extension icons (blue rounded square, white ranked bars)."""
+"""LEGACY placeholder icon generator (blue square + bars). Superseded: static/icons/ now holds the AI Seen Lab brand icon
+(resized from ai-visibility-audit/marketing/brand/aiseenlab_icon_DRAFT.png). Do not run unless you want the old icons back."""
 from PIL import Image, ImageDraw
 for size in (16, 48, 128, 440):
     s = 4 * size
