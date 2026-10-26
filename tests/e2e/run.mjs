@@ -86,7 +86,7 @@ try {
   await d.click('nav button[data-tab=pending]');
   await sleep(300);
   const pend = await d.$$eval('tbody tr', (rs) => rs.map((r) => r.innerText));
-  check('dashboard: pending replies exclude answered', pend.length === 3 && !pend.join().includes('Ships to HK'), `${pend.length} rows`);
+  check('dashboard: pending replies (30 days) exclude answered', pend.length === 4 && pend.join().includes('Old comment') && !pend.join().includes('Ships to HK'), `${pend.length} rows`);
   await screenshot(d, 'en-2-pending');
 
   // 4) following snapshot via human-pace scroller (lazy list that unloads old rows, like X)
@@ -112,8 +112,8 @@ try {
   await d.bringToFront(); await d.reload({ waitUntil: 'load' });
   await d.click('nav button[data-tab=notBack]'); await sleep(300);
   const nb = await d.$$eval('tbody tr', (rs) => rs.length);
-  const up = await d.$eval('#view', (v) => v.querySelector('.upsell')?.textContent || '');
-  check('not-following-back: 30 of 45; free plan shows top 20 + "10 hidden" upsell', nb === 20 && /10/.test(up), `${nb} rows; ${up.trim()}`);
+  const csvOn = await d.$eval('#csv', (b) => !b.disabled);
+  check('not-following-back: all 30 of 45 listed, CSV export enabled (free edition, no limits)', nb === 30 && csvOn, `${nb} rows; csv ${csvOn}`);
   await screenshot(d, 'en-3-not-following-back');
   await d.click('nav button[data-tab=unfollowers]'); await sleep(300);
   const uf = await d.$eval('#view', (v) => v.innerText);
@@ -150,10 +150,16 @@ try {
   await d.click('nav button[data-tab=settings]'); await sleep(300); await screenshot(d, 'zh-6-settings');
   const diag = await d.$eval('#view', (v) => v.innerText);
   check('settings: selector diagnostics shown', /tweet/.test(diag) && /AppTabBar_Profile_Link|primaryColumn/.test(diag));
+  const paid = await d.$eval('body', (b) => ({ html: b.innerHTML, key: !!b.querySelector('#key, #act') }));
+  check('free edition: no key field, purchase link or paid copy anywhere in the dashboard',
+        !paid.key && !/stripe|\bbuy\b|\bpro\b|license|升级|购买|授权|\$\s?\d/i.test(paid.html));
+  await d.click('nav button[data-tab=leaderboard]'); await sleep(200);
+  const segOn = await d.$$eval('[data-days]', (bs) => bs.every((b) => !b.disabled));
+  check('free edition: 7/30/90-day ranges all selectable', segOn);
 
   // 8) no network
   const external = extRequests.filter((u) => !u.startsWith(base));
-  check('no network requests by the extension (license API unused in free plan)', external.length === 0, external.slice(0, 3).join(', '));
+  check('no network requests by the extension', external.length === 0, external.slice(0, 3).join(', '));
 } catch (e) {
   check('e2e run', false, String(e?.stack || e));
 } finally {

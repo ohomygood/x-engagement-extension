@@ -51,3 +51,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   for (const b of bad) console.error('RELEASE CHECK:', b);
   process.exit(bad.length ? 1 : 0);
 }
+
+// Free store edition (Chrome Web Store "non-trader" account): the extension build must not contain any purchase entry,
+// payment link, license/unlock flow, price or paid-tier copy, nor dev-only hosts.
+export const FREE_BAD = /stripe|buy\.stripe|payment|purchase|\bupgrade|\bbuy\b|\bpro\b|license[ _-]?key|licen[cs]e_api|\/activate|xeng-license|client_reference_id|XENG-|\$\s?\d|¥|付费|购买|价格|升级|授权码|激活|localhost|127\.0\.0\.1|微信|wechat/i;
+export function checkFreeEdition(dir) {
+  const out = [];
+  const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : files.push(p); } };
+  const files = []; walk(dir);
+  for (const f of files) {
+    if (!TEXT_RE.test(f)) continue;
+    const m = readFileSync(f, 'utf8').match(FREE_BAD);
+    if (m) out.push(`${relative(dir, f)}: paid/dev text in free edition: "${m[0]}"`);
+  }
+  return out;
+}

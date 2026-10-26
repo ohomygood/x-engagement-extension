@@ -31,12 +31,12 @@ const manifest = {
   background: { service_worker: 'background.js' },
   content_scripts: [{ matches, js: ['content.js'], run_at: 'document_idle' }],
   // No "permissions" and no "host_permissions": IndexedDB needs none, the dashboard opens via chrome.tabs.create
-  // (no "tabs" permission needed), and the license Worker answers with CORS headers.
+  // (no "tabs" permission needed). The free store edition makes no network requests at all.
   permissions: [],
   content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'" },
 };
 writeFileSync(`${out}/manifest.json`, JSON.stringify(manifest, null, 2));
-const { checkRelease } = await import('./check_release.mjs');
-const bad = checkRelease(out);
+const { checkRelease, checkFreeEdition } = await import('./check_release.mjs');
+const bad = [...checkRelease(out), ...(e2e ? [] : checkFreeEdition(out))];
 if (bad.length) { console.error('RELEASE CHECK FAILED:\n' + bad.join('\n')); process.exit(3); }
 console.log(`built ${out}/ (v${pkg.version}${e2e ? ', e2e' : ''})`);
